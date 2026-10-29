@@ -5,8 +5,8 @@
  * Data laporan sebenarnya disimpan di Supabase.
  */
 
-const STORAGE_KEY_MY_REPORTS = 'taniterang_my_reports';
-const STORAGE_KEY_DRAFT = 'taniterang_report_draft';
+const STORAGE_KEY_MY_REPORTS = 'pepuk_my_reports';
+const STORAGE_KEY_DRAFT = 'pepuk_report_draft';
 
 function readJSON(key, fallback) {
   try {

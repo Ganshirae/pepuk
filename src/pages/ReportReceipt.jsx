@@ -24,7 +24,7 @@ export default function ReportReceipt({ report, setActivePage, setLookupCode }) 
 
   const s = report.summary;
   const forwardText = [
-    `Pengaduan pupuk bersubsidi (ref. TaniTerang ${report.publicId})`,
+    `Pengaduan pupuk bersubsidi (ref. PEPUK ${report.publicId})`,
     `Masalah: ${REPORT_CATEGORIES.find((c) => c.id === report.category)?.title}`,
     report.fertilizerName && `Pupuk: ${report.fertilizerName}`,
     `Lokasi: ${[s.desa, s.kecamatan, report.regionName].filter(Boolean).join(', ')}`,

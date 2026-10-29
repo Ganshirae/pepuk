@@ -79,7 +79,7 @@ export default function TrackReport({ initialLookup, setActivePage }) {
       <form onSubmit={(e) => { e.preventDefault(); search(); }} className="bg-white border border-slate-200 rounded-gov p-5 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
         <label className="text-xs font-bold text-slate-900 space-y-1">
           <span>ID laporan</span>
-          <input value={publicId} onChange={(e) => setPublicId(e.target.value.toUpperCase())} placeholder="TT-2026-XXXXXX" autoComplete="off" className="w-full px-3 py-2.5 rounded border border-slate-300 font-mono text-sm" />
+          <input value={publicId} onChange={(e) => setPublicId(e.target.value.toUpperCase())} placeholder="PP-2026-XXXXXX" autoComplete="off" className="w-full px-3 py-2.5 rounded border border-slate-300 font-mono text-sm" />
         </label>
         <label className="text-xs font-bold text-slate-900 space-y-1">
           <span>Kode rahasia</span>

@@ -10,7 +10,7 @@ export default function Footer({ setActivePage }) {
           <div className="md:col-span-2 space-y-3">
             <div className="flex items-center gap-2">
               <span className="font-black text-lg tracking-tight text-slate-900">
-                TANI<span className="text-gov-forest">TERANG</span>
+                PE<span className="text-gov-forest">PUK</span>
               </span>
               <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300">
                 NASIONAL + NTB
@@ -82,7 +82,7 @@ export default function Footer({ setActivePage }) {
 
         {/* Bottom Strip */}
         <div className="border-t border-slate-200 pt-6 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-slate-500 gap-2">
-          <span>© {new Date().getFullYear()} TANITERANG. DRAFT PERTAMA KOMPETISI MIA 2026 (WEB IN ACTION).</span>
+          <span>© {new Date().getFullYear()} PEPUK. DRAFT PERTAMA KOMPETISI MIA 2026 (WEB IN ACTION).</span>
           <span className="text-slate-700 font-bold">TEMA: DESIGNING DIGITAL FUTURES: POWERING PUBLIC TRANSPARENCY</span>
         </div>
       </div>

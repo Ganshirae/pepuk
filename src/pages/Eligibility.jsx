@@ -52,7 +52,7 @@ export default function Eligibility({ setActivePage }) {
         <p className="font-mono text-[11px] font-bold text-gov-forest uppercase tracking-wider">Pengajuan pupuk subsidi resmi</p>
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">Apakah saya berhak pupuk bersubsidi?</h1>
         <p className="text-sm text-slate-600">
-          Jawab 4 pertanyaan. Tidak ada data yang disimpan. Pendaftaran resmi hanya lewat kelompok tani dan penyuluh ke sistem e-RDKK Kementerian Pertanian. TaniTerang tidak bisa mendaftarkan Anda secara langsung.
+          Jawab 4 pertanyaan. Tidak ada data yang disimpan. Pendaftaran resmi hanya lewat kelompok tani dan penyuluh ke sistem e-RDKK Kementerian Pertanian. PEPUK tidak bisa mendaftarkan Anda secara langsung.
         </p>
       </header>
 
@@ -116,7 +116,7 @@ export default function Eligibility({ setActivePage }) {
               <p className="font-bold flex items-center gap-1.5"><ClipboardList className="w-4 h-4" />Langkah mendaftar (resmi):</p>
               <ol className="list-decimal pl-5 space-y-1">
                 <li>Bergabung ke kelompok tani di desa Anda (tanya ketua poktan atau kepala desa).</li>
-                <li>Serahkan data ke ketua poktan atau penyuluh (PPL): nama sesuai KTP, NIK, luas lahan, komoditas, dan rencana tanam. Data ini diserahkan langsung ke penyuluh, <strong>bukan ke TaniTerang</strong>.</li>
+                <li>Serahkan data ke ketua poktan atau penyuluh (PPL): nama sesuai KTP, NIK, luas lahan, komoditas, dan rencana tanam. Data ini diserahkan langsung ke penyuluh, <strong>bukan ke PEPUK</strong>.</li>
                 <li>Penyuluh dan Dinas Pertanian kabupaten/kota memasukkan dan memverifikasi data di e-RDKK, lalu disahkan Kepala Dinas.</li>
                 <li>Pendaftaran e-RDKK tahun anggaran 2027 dibuka sejak 22 September 2026. Segera hubungi penyuluh karena data yang sudah disahkan tidak bisa diubah.</li>
                 <li>Setelah terdaftar, cek nama Anda di Cek Subsidi Kementan, lalu tebus di kios resmi dengan KTP.</li>

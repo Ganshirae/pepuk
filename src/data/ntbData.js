@@ -1,5 +1,5 @@
 /**
- * Konstanta statis TaniTerang.
+ * Konstanta statis PEPUK.
  * Angka alokasi/realisasi/HET TIDAK disimpan di sini: semuanya dimuat dari Supabase (lihat src/lib/supabase.js)
  * agar setiap angka punya sumber resmi yang tercatat.
  */

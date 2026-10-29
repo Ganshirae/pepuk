@@ -114,7 +114,7 @@ export default function Dashboard({ data, setActivePage, setPrefilledReportData 
     const blob = new Blob(['\ufeff' + [head.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `taniterang_${isNtb ? 'ntb_kabkota' : 'nasional_provinsi'}.csv`;
+    a.download = `pepuk_${isNtb ? 'ntb_kabkota' : 'nasional_provinsi'}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -335,7 +335,7 @@ export default function Dashboard({ data, setActivePage, setPrefilledReportData 
         </div>
         <div className="bg-white border border-slate-200 rounded-gov p-4 space-y-3">
           <h2 className="text-sm font-black text-slate-900">Kanal resmi pemerintah</h2>
-          <p className="text-xs text-slate-600">TaniTerang melengkapi, tidak menggantikan kanal resmi. Anda juga dapat melapor langsung ke:</p>
+          <p className="text-xs text-slate-600">PEPUK melengkapi, tidak menggantikan kanal resmi. Anda juga dapat melapor langsung ke:</p>
           <ul className="space-y-2">
             {OFFICIAL_CHANNELS.map((c) => (
               <li key={c.name}>

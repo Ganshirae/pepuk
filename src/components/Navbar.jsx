@@ -34,15 +34,15 @@ export default function Navbar({ activePage, setActivePage, myReportsCount = 0 }
           <button
             onClick={() => setActivePage('home')}
             className="flex items-center gap-3 text-left focus:outline-none group"
-            aria-label="Kembali ke Beranda TANITERANG"
+            aria-label="Kembali ke Beranda PEPUK"
           >
             <div className="w-9 h-9 rounded bg-gov-forest text-white flex items-center justify-center font-extrabold text-sm border border-gov-dark shadow-sm">
-              TT
+              PP
             </div>
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="font-black text-lg tracking-tight text-slate-900">
-                  TANI<span className="text-gov-forest">TERANG</span>
+                  PE<span className="text-gov-forest">PUK</span>
                 </span>
                 <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold">
                   BETA
