@@ -1,90 +1,91 @@
-# TANITERANG: Platform Transparansi Pupuk Bersubsidi (Pilot NTB)
+# PEPUK: Platform Transparansi Pupuk Bersubsidi
 
-> **Kompetisi:** MIA 2026 — Web In Action (WIA)  
+> **Kompetisi:** MIA 2026 — Web In Action (WIA)
 > **Tema:** *Designing Digital Futures: Powering Public Transparency*
 
 ---
 
-## 1. Judul Proyek dan Deskripsi Singkat
+## 1. Deskripsi Singkat
 
-**TANITERANG** adalah platform keterbukaan publik yang menyajikan transparansi data alokasi, realisasi, dan Harga Eceran Tertinggi (HET) pupuk bersubsidi resmi untuk wilayah Nusa Tenggara Barat (NTB). Platform ini menyediakan kanal aduan warga tanpa akun dan tanpa syarat NIK/KTP, di mana laporan hanya akan dinyatakan selesai setelah dikonfirmasi langsung oleh pelapor (*two-sided resolution*).
+**PEPUK** adalah platform keterbukaan publik untuk distribusi pupuk bersubsidi. Isinya data alokasi dan realisasi resmi untuk 38 provinsi (Kementerian Pertanian) dan 10 kabupaten/kota NTB (Satu Data NTB), HET yang berlaku, serta kanal laporan warga tanpa akun dan tanpa NIK. Laporan baru dinyatakan selesai setelah dikonfirmasi pelapor (*two-sided resolution*).
 
----
-
-## 2. Tech Stack
-
-Pengembangan antarmuka TANITERANG mengedepankan performa tinggi, aksesibilitas visual WCAG 2.1 AA, dan keandalan di perangkat ponsel *entry-level* dengan sinyal terbatas:
-
-* **Core & Framework:** [React 18](https://react.dev/) + [Vite 6](https://vitejs.dev/) (Single Page Application, Fast HMR, Modular Architecture)
-* **Styling & Design System:** [Tailwind CSS v3](https://tailwindcss.com/) dengan palet token warna ramah buta warna (*Colorblind-safe* HSL & Emerald `#1F6B3A`, Amber `#F2B01E`)
-* **Peta Spasial & Choropleth:** [Leaflet.js 1.9](https://leafletjs.com/) dengan batas wilayah GeoJSON terkompresi (<35 KB) untuk 10 Kabupaten/Kota NTB
-* **Ikonografi & Visual:** [Lucide React](https://lucide.dev/) (Ikon SVG garis konsisten tanpa emoji mentah)
-* **Penyimpanan & Keamanan Klien:** 
-  * Browser Web Crypto API (SHA-256 Hashing untuk kode pelacakan rahasia)
-  * Web Storage (`localStorage` API) untuk penyimpanan draf otomatis (*offline resilience*) dan pelacakan riwayat aduan lokal tanpa login.
+PEPUK melengkapi, tidak menggantikan, sistem resmi (e-RDKK, i-Pubers, Cek Subsidi Kementan, SP4N-LAPOR!).
 
 ---
 
-## 3. Panduan Menjalankan Proyek (How to Run)
+## 2. Fitur
 
-Ikuti langkah-langkah berikut untuk menguji dan menjalankan proyek di komputer lokal:
+| Fitur | Isi |
+| :--- | :--- |
+| **Dashboard** | Filter cakupan (nasional/NTB), tahun, dan jenis pupuk; KPI; peta choropleth; grafik tren, per jenis pupuk, dan peringkat wilayah; tabel wilayah; tabel HET dan kalkulator harga; statistik tindak lanjut laporan; kanal resmi; unduh CSV. Setiap angka disertai sumber. |
+| **Lapor** | 7 kategori masalah, 4 langkah, tanpa akun/NIK; perbandingan otomatis dengan HET; maks. 3 foto (EXIF dihapus di browser); kontak opsional. Menghasilkan ID publik (`PP-2026-XXXXXX`) dan kode rahasia. |
+| **Lacak** | Tahapan status, tenggat per tahap (PermenPANRB 62/2018), penanda terlambat, instansi penanggung jawab, riwayat, konfirmasi pelapor. |
+| **Cek Hak Subsidi** | Cek kelayakan berdasarkan Permentan 15/2025 jo. 3/2026 dan panduan daftar lewat penyuluh ke e-RDKK. Tidak menyimpan data. |
+| **Panel Petugas** | `/#petugas`: login, antrian laporan, ubah status dengan catatan publik. |
 
-### 3.1. Prasyarat Sistem
-* **Node.js:** Versi 18.x, 20.x, atau 22.x+
-* **Package Manager:** `npm` (atau `pnpm` / `yarn`)
-* **Git:** Versi terbaru
+---
 
-### 3.2. Kloning Repositori
+## 3. Tech Stack
+
+* **Frontend:** React 18 + Vite 6, Tailwind CSS 3, Leaflet 1.9, Lucide React
+* **Backend:** Supabase (PostgreSQL, Auth, Storage). Publik tidak mengakses tabel laporan secara langsung; semua lewat fungsi RPC dengan validasi, kode rahasia disimpan sebagai hash bcrypt, dan pelacakan dibatasi 5 percobaan/menit.
+* **Peta:** GeoJSON 38 provinsi (ardian28/GeoJson-Indonesia-38-Provinsi, MIT) dan batas kab/kota NTB.
+
+---
+
+## 4. Menjalankan Proyek
+
+### Prasyarat
+* Node.js 18 atau lebih baru (dibutuhkan Vite 6)
+* Python 3 (hanya pustaka standar, untuk skrip seed)
+* Project Supabase
+
 ```bash
 git clone https://github.com/Ganshirae/pepuk.git
 cd pepuk
-```
-
-### 3.3. Pemasangan Dependensi
-Pasang semua pustaka yang dibutuhkan dengan perintah:
-```bash
 npm install
+cp .env.example .env   # isi VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY (publishable key)
+npm run dev            # http://localhost:5173/
 ```
 
-### 3.4. Konfigurasi Berkas Lingkungan (*Environment*)
-Platform pada Fase 1 ini sepenuhnya berjalan *client-side* menggunakan data terbuka resmi NTB dan `localStorage` engine, sehingga **tidak memerlukan konfigurasi file `.env` khusus** untuk pengujian lokal.
+Build produksi: `npm run build && npm run preview`.
 
-### 3.5. Menjalankan Server Pengembangan Lokal (*Dev Server*)
-Jalankan dev server dengan perintah:
-```bash
-npm run dev
-```
-Setelah server aktif, buka peramban (*browser*) Anda pada tautan:
-```
-http://localhost:5173/
-```
-
-### 3.6. Validasi Build Produksi
-Untuk memastikan tidak ada kesalahan sintaks atau kompilasi bundel:
-```bash
-npm run build
-npm run preview
-```
+### Database
+1. **Skema:** jalankan `supabase/migrations/0001` sampai `0008` secara berurutan (SQL Editor Supabase atau `psql`).
+2. **Data referensi:** isi `SUPABASE_DB_URL` di `.env` (Session pooler, jangan diberi awalan `VITE_`), lalu:
+   ```bash
+   set -a; . ./.env; set +a
+   python3 scripts/seed_reference.py | psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1
+   ```
+   Skrip memvalidasi jumlah per provinsi terhadap baris total di berkas sumber. Berkas mentah ada di `data/raw/`.
+3. **Akun petugas:** buat user di Supabase → Authentication → Add user, lalu daftarkan di SQL Editor:
+   ```sql
+   insert into public.officers (user_id, name, agency, role)
+   values ('<user-id>', 'Nama Petugas', 'Dinas Pertanian Kab. ...', 'verifikator'); -- role: verifikator | admin
+   ```
+   Panel petugas dibuka di `/#petugas`. Gunakan kata sandi yang kuat karena akun ini dapat membaca kontak pelapor.
 
 ---
 
-## 4. Status Progres Pengerjaan (First Draft Submission)
+## 5. Sumber Data & Regulasi
 
-Seluruh target modul utama **Fase 1 (M0 – M4)** beserta penyempurnaan pengalaman pengguna telah selesai dibangun:
-
-| Kode Modul | Nama Modul | Status | Rincian Fitur yang Selesai Dibangun |
-| :--- | :--- | :---: | :--- |
-| **M0** | **Beranda Utama** | ✅ Rampung | Ringkasan metrik alokasi, realisasi, dan % penyerapan NTB; kartu navigasi cepat 10 wilayah; 3 pilar alur kerja transparansi; banner jaminan privasi tanpa NIK/KTP; tombol aksi besar Lapor & Lacak. |
-| **M1** | **Info Pupuk: Data & Peta** | ✅ Rampung | Peta Leaflet interaktif choropleth NTB (filter layer % realisasi, ton alokasi, dan aduan); daftar alternatif wilayah ramah layar seluler (360px); modal rincian wilayah per jenis pupuk (Urea, NPK, Organik); tabel HET resmi Permentan No. 01/2024; fitur unduh data format CSV. |
-| **M2** | **Formulir Lapor Masalah** | ✅ Rampung | Wizard bertahap 4 langkah (Masalah $\rightarrow$ Wilayah $\rightarrow$ Bukti Foto & Harga $\rightarrow$ Kirim); komparasi otomatis selisih harga terhadap HET resmi; unggah maksimal 3 foto dengan validasi ukuran (<2MB); auto-save draf lokal; captcha anti-spam; kontak opsional. |
-| **M3** | **Bukti & Kode Rahasia** | ✅ Rampung | Pembuatan ID Publik (format `TT-2024-XXXX`) dan Kode Rahasia unik (format `TR-XXXX-XXXX`); fungsi salin kode satu ketukan; peringatan tegas penyimpanan kode; tautan instan ke modul pelacakan. |
-| **M4** | **Lacak Laporan** | ✅ Rampung | Pencarian status dengan kode rahasia atau ID publik; timeline vertikal riwayat disposisi; countdown batas waktu respons (SLA); **Fitur Inovasi:** mekanisme *two-sided resolution* (tombol konfirmasi pelapor "Sudah Selesai" atau "Buka Kembali"); kode demo siap uji. |
-| **M7** | **Laporan Saya** *(Quick Win)* | ✅ Rampung | Daftar riwayat aduan yang pernah dikirim dari peramban perangkat lokal tanpa membutuhkan login; akses lacak cepat; opsi pembersihan riwayat lokal. |
+1. **Alokasi & realisasi nasional:** Satu Data Pertanian, Kementan (Ditjen PSP, diolah dari PT Pupuk Indonesia), Data Prioritas 2025, rilis 31 Des 2025. Per provinsi, 2019–2025:
+   * Urea dan NPK: 2019–2025.
+   * ZA: tidak ada data 2023–2024. Organik: tidak ada data 2023. SP-36: hanya sampai 2022.
+   * Data 2025 sampai Oktober 2025; realisasi ZA, Organik, dan SP-36 tahun 2022 sampai September 2022.
+   * Urea 2025: jumlah per provinsi di berkas sumber lebih besar dari baris total Indonesia (alokasi +10.076 t, realisasi +3.166 t). Ditampilkan apa adanya dan dicatat di metadata sumber.
+2. **Alokasi & realisasi NTB:** Satu Data NTB, per kabupaten/kota, 2021–2025, semua jenis pupuk.
+3. **HET:** Kepmentan No. 1117/Kpts./SR.310/M/10/2025, berlaku 22 Okt 2025 (Urea Rp1.800/kg, NPK Rp1.840/kg, NPK Formula Khusus Rp2.640/kg, ZA Rp1.360/kg, Organik Rp640/kg).
+4. **Syarat penerima:** Perpres 6/2025, Permentan 15/2025 jo. Permentan 3/2026.
+5. **Tenggat pengaduan:** PermenPANRB 62/2018.
+6. **Peta:** batas provinsi dari [ardian28/GeoJson-Indonesia-38-Provinsi](https://github.com/ardian28/GeoJson-Indonesia-38-Provinsi) (MIT, disederhanakan); peta dasar © kontributor [OpenStreetMap](https://www.openstreetmap.org/copyright).
 
 ---
 
-## 5. Sumber Data & Regulasi Acuan
+## 6. Batasan
 
-1. **Harga Eceran Tertinggi (HET):** Peraturan Menteri Pertanian (Permentan) No. 01 Tahun 2024 jo. Kepmentan No. 249/2024 (Urea: Rp1.800/kg, NPK: Rp1.840/kg, Pupuk Organik: Rp640/kg).
-2. **Alokasi Pupuk NTB:** Data Publikasi Dinas Pertanian dan Perkebunan Provinsi NTB & Sistem e-Alokasi Kementerian Pertanian Republik Indonesia.
-3. **Penyaluran Resmi:** Mekanisme penebusan berbasis digital *i-Pubers* (PT Pupuk Indonesia).
+* Data bersifat tahunan dan bergantung pada rilis resmi; bukan data waktu nyata.
+* Data kab/kota baru tersedia untuk NTB. Laporan dari provinsi lain mencatat nama kab/kota sebagai teks.
+* Tidak ada API publik e-RDKK maupun Cek Subsidi, sehingga fitur Cek Hak Subsidi berupa panduan dan tautan ke situs resmi, bukan pendaftaran langsung.
+* Perhitungan hari kerja mengecualikan Sabtu–Minggu, tetapi belum memperhitungkan libur nasional.
+* Kode rahasia laporan tidak dapat dipulihkan jika hilang (server hanya menyimpan hash-nya).
