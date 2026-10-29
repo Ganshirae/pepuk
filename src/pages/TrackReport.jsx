@@ -1,306 +1,175 @@
-import React, { useState, useEffect } from 'react';
-import { findReportByCode, confirmReportResolution } from '../utils/storage';
-import {
-  Search,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  ArrowRight,
-  ShieldCheck,
-  Check,
-  RotateCcw,
-  Building2,
-  FileText,
-  UserCheck
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Search, CheckCircle2, Clock, AlertTriangle, Building2, UserCheck, RotateCcw, Check, Circle } from 'lucide-react';
+import { rpc } from '../lib/supabase';
+import { REPORT_CATEGORIES, REPORT_STATUS, STATUS_STEPS } from '../data/ntbData';
 
-export default function TrackReport({ initialCode = '', setActivePage }) {
-  const [inputCode, setInputCode] = useState(initialCode);
+const dt = (iso) => (iso ? new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '–');
+const rp = (n) => `Rp${Math.round(n).toLocaleString('id-ID')}`;
+const ACTOR = { sistem: 'Sistem', petugas: 'Petugas', pelapor: 'Pelapor' };
+const ERRORS = {
+  not_found: 'ID atau kode rahasia tidak cocok. Periksa kembali (huruf besar/kecil tidak berpengaruh).',
+  rate_limited: 'Terlalu banyak percobaan. Tunggu 1 menit lalu coba lagi.',
+  invalid_state: 'Konfirmasi hanya bisa dilakukan setelah instansi menyatakan laporan selesai.'
+};
+
+// Posisi laporan pada urutan tahap. 'dibuka_kembali' dikembalikan ke tahap tindak lanjut.
+function stepIndex(status) {
+  if (status === 'dibuka_kembali') return STATUS_STEPS.findIndex((s) => s.id === 'ditindaklanjuti');
+  return STATUS_STEPS.findIndex((s) => s.id === status);
+}
+
+export default function TrackReport({ initialLookup, setActivePage }) {
+  const [publicId, setPublicId] = useState(initialLookup?.publicId || '');
+  const [secret, setSecret] = useState(initialLookup?.secretCode || '');
   const [report, setReport] = useState(null);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [konfirmasiCatatan, setKonfirmasiCatatan] = useState('');
-  const [confirmationFeedback, setConfirmationFeedback] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState('');
+  const [feedback, setFeedback] = useState('');
 
-  const sampleCodes = [
-    { label: 'Status: Diterima Sistem', code: 'TR-7821-KM91' },
-    { label: 'Status: Diteruskan ke KP3', code: 'TR-4421-P9B2' },
-    { label: 'Status: Menunggu Konfirmasi Anda', code: 'TR-9981-L3X7', highlight: true }
-  ];
-
-  const handleSearch = async (codeToSearch) => {
-    const target = (codeToSearch || inputCode).trim();
-    if (!target) {
-      setErrorMessage('Ketikkan kode rahasia pelacakan atau ID publik doket.');
-      return;
-    }
-
-    setIsSearching(true);
-    setErrorMessage('');
-
+  const search = async (id = publicId, code = secret) => {
+    if (!id.trim() || !code.trim()) return setError('Isi ID laporan dan kode rahasia.');
+    setLoading(true);
+    setError('');
+    setFeedback('');
     try {
-      const found = await findReportByCode(target);
-      if (found) {
-        setReport(found);
-      } else {
+      const res = await rpc('track_report', { p_public_id: id, p_secret: code });
+      if (res.error) {
         setReport(null);
-        setErrorMessage('Kode doket tidak ditemukan. Periksa kembali format kode rahasia atau ID laporan Anda.');
-      }
-    } catch {
-      setErrorMessage('Gagal memeriksa basis data pengawasan.');
+        setError(ERRORS[res.error] || 'Gagal memeriksa laporan.');
+      } else setReport(res);
+    } catch (e) {
+      setError(e.message);
     } finally {
-      setIsSearching(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (initialCode) {
-      setInputCode(initialCode);
-      handleSearch(initialCode);
-    }
-  }, [initialCode]);
+    if (initialLookup?.publicId && initialLookup?.secretCode) search(initialLookup.publicId, initialLookup.secretCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLookup]);
 
-  const handleConfirmAction = (isFinished) => {
-    if (!report) return;
-    const updated = confirmReportResolution(report.idPublik, isFinished, konfirmasiCatatan);
-    if (updated) {
-      setReport({ ...updated });
-      setConfirmationFeedback(
-        isFinished
-          ? 'Konfirmasi dicatat: Status laporan resmi selesai dan ditutup atas persetujuan pelapor.'
-          : 'Laporan dibuka kembali dan dikembalikan ke antrean tim pengawas untuk investigasi ulang.'
-      );
-      setKonfirmasiCatatan('');
-      setTimeout(() => setConfirmationFeedback(''), 6000);
+  const confirm = async (resolved) => {
+    setLoading(true);
+    try {
+      const res = await rpc('confirm_resolution', { p_public_id: publicId, p_secret: secret, p_resolved: resolved, p_note: note || null });
+      if (res.error) return setError(ERRORS[res.error] || 'Konfirmasi gagal.');
+      setReport(res);
+      setNote('');
+      setFeedback(resolved ? 'Terima kasih. Laporan dinyatakan selesai atas konfirmasi Anda.' : 'Laporan dibuka kembali dan dikembalikan ke petugas dengan tenggat baru 14 hari kerja.');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const current = report ? stepIndex(report.status) : -1;
+  const lastByStatus = report ? Object.fromEntries(report.events.map((e) => [e.status, e])) : {};
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Title */}
-      <div className="bg-white border border-slate-200 p-6 rounded-gov space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-bold text-gov-forest bg-gov-light px-2 py-0.5 rounded border border-gov-border">
-            SISTEM PELACAKAN DOKET PENGADUAN
-          </span>
-          <span className="text-slate-400">•</span>
-          <span className="text-xs font-mono text-slate-500">AKUNTABILITAS DUA ARAH</span>
-        </div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-          Lacak Disposisi & Status Laporan Pupuk
-        </h1>
-        <p className="text-xs text-slate-600 leading-relaxed">
-          Masukkan token rahasia untuk memeriksa progres tindak lanjut oleh Komisi Pengawasan Pupuk dan Pestisida (KP3), Dinas Pertanian NTB, dan konfirmasi penyelesaian kasus Anda.
-        </p>
-      </div>
+    <div className="max-w-3xl mx-auto space-y-5">
+      <header className="bg-white border border-slate-200 p-5 sm:p-6 rounded-gov space-y-2">
+        <p className="font-mono text-[11px] font-bold text-gov-forest uppercase tracking-wider">Lacak laporan</p>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Sudah sampai mana laporan saya?</h1>
+        <p className="text-sm text-slate-600">Lihat siapa yang memegang laporan, batas waktunya, dan catatan tindak lanjut di setiap tahap.</p>
+      </header>
 
-      {/* Code Search Terminal Box */}
-      <div className="bg-white border border-slate-200 rounded-gov p-5 sm:p-6 space-y-4">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSearch();
-          }}
-          className="space-y-3"
-        >
-          <label htmlFor="inputCodeField" className="block text-xs font-bold font-mono text-slate-900 uppercase">
-            MASUKKAN KODE TOKEN RAHASIA / ID PUBLIK:
-          </label>
-          <div className="flex flex-col sm:flex-row gap-2 font-mono">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                id="inputCodeField"
-                type="text"
-                placeholder="CONTOH: TR-7821-KM91 ATAU TT-2024-A8B1"
-                value={inputCode}
-                onChange={(e) => setInputCode(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded border border-slate-300 font-mono font-bold text-xs sm:text-sm uppercase focus:border-slate-800"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isSearching}
-              className="px-6 py-2 rounded bg-slate-900 hover:bg-black text-white text-xs font-bold font-mono tracking-wider transition-colors"
-            >
-              {isSearching ? 'MEMERIKSA...' : 'PERIKSA DOKET'}
-            </button>
-          </div>
-        </form>
+      <form onSubmit={(e) => { e.preventDefault(); search(); }} className="bg-white border border-slate-200 rounded-gov p-5 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+        <label className="text-xs font-bold text-slate-900 space-y-1">
+          <span>ID laporan</span>
+          <input value={publicId} onChange={(e) => setPublicId(e.target.value.toUpperCase())} placeholder="TT-2026-XXXXXX" autoComplete="off" className="w-full px-3 py-2.5 rounded border border-slate-300 font-mono text-sm" />
+        </label>
+        <label className="text-xs font-bold text-slate-900 space-y-1">
+          <span>Kode rahasia</span>
+          <input value={secret} onChange={(e) => setSecret(e.target.value.toUpperCase())} placeholder="XXXX-XXXX" autoComplete="off" className="w-full px-3 py-2.5 rounded border border-slate-300 font-mono text-sm" />
+        </label>
+        <button type="submit" disabled={loading} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded bg-gov-forest hover:bg-gov-hover text-white text-sm font-bold disabled:opacity-60">
+          <Search className="w-4 h-4" />{loading ? 'Memeriksa…' : 'Lacak'}
+        </button>
+        {error && <p className="sm:col-span-3 text-sm text-red-800 bg-red-50 border border-red-200 rounded p-3" role="alert">{error}</p>}
+        <p className="sm:col-span-3 text-[11px] text-slate-500">Kode tersimpan di menu <button type="button" onClick={() => setActivePage('my-reports')} className="underline font-bold">Laporan Saya</button> jika Anda melapor dari perangkat ini.</p>
+      </form>
 
-        {/* Demo Test Tokens (For Judges & Testing) */}
-        <div className="pt-2 border-t border-slate-100 font-mono text-xs">
-          <span className="text-[10px] text-slate-500 block uppercase mb-1.5 font-bold">
-            UJI CEPAT STATUS (KODE CONTOH SIMULASI NTB):
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {sampleCodes.map((s) => (
-              <button
-                key={s.code}
-                onClick={() => {
-                  setInputCode(s.code);
-                  handleSearch(s.code);
-                }}
-                className={`text-[11px] px-2.5 py-1 rounded border transition-colors ${
-                  s.highlight
-                    ? 'bg-amber-light text-amber-950 border-amber-border font-bold hover:bg-amber-100'
-                    : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-                }`}
-              >
-                {s.code} ({s.label})
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {errorMessage && (
-          <div className="p-3 bg-red-50 border border-red-300 rounded font-mono text-xs text-red-800 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-700" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-      </div>
-
-      {confirmationFeedback && (
-        <div className="p-4 bg-emerald-50 border border-emerald-300 rounded font-mono text-xs text-emerald-950 font-bold flex items-center gap-2">
-          <Check className="w-4 h-4 text-emerald-700 shrink-0" />
-          <span>{confirmationFeedback}</span>
-        </div>
-      )}
-
-      {/* CASE FILE DISPLAY */}
       {report && (
-        <div className="space-y-5">
-          {/* Main Case Summary Box */}
-          <div className="bg-white border-2 border-slate-900 rounded-gov p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+        <>
+          <section className="bg-white border-2 border-slate-800 rounded-gov p-5 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <span className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  NOMOR DOKET PENGAWASAN
-                </span>
-                <span className="font-mono text-lg font-black text-slate-900">
-                  {report.idPublik}
-                </span>
+                <p className="font-mono text-xs font-bold text-slate-500">{report.public_id}</p>
+                <h2 className="text-lg font-black text-slate-900">{REPORT_CATEGORIES.find((c) => c.id === report.category)?.title}</h2>
+                <p className="text-xs text-slate-600">{[report.desa, report.kecamatan, report.kabkota_name, report.region_name].filter(Boolean).join(', ')} • kejadian {report.incident_date}</p>
               </div>
-              <div className="font-mono text-xs font-bold px-3 py-1 bg-slate-100 border border-slate-300 rounded text-slate-800 self-start sm:self-auto">
-                STATUS: {report.statusLabel.toUpperCase()}
-              </div>
-            </div>
-
-            {/* Case Facts Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded">
-                <span className="text-[10px] text-slate-500 block uppercase">KOMODITAS</span>
-                <strong className="text-slate-900 font-bold">{report.jenisPupuk}</strong>
-              </div>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded">
-                <span className="text-[10px] text-slate-500 block uppercase">LOKASI KASUS</span>
-                <strong className="text-slate-900 font-bold">{report.namaWilayah}</strong>
-                <span className="text-[10px] text-slate-500 block">{report.kecamatan}</span>
-              </div>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded">
-                <span className="text-[10px] text-slate-500 block uppercase">TANGGAL LAPOR</span>
-                <span className="text-slate-900 font-bold">{report.dibuatPada}</span>
-              </div>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded">
-                <span className="text-[10px] text-slate-500 block uppercase">TARGET DISPOSISI (SLA)</span>
-                <span className="text-gov-forest font-bold">{report.batasRespons}</span>
-              </div>
-            </div>
-
-            {/* Price Disparity Alert */}
-            {report.selisih > 0 && (
-              <div className="p-3 bg-amber-light border border-amber-border rounded font-mono text-xs flex justify-between items-center text-amber-950 font-bold">
-                <span>HARGA DIBAYAR: RP {report.hargaDibayar.toLocaleString('id-ID')}</span>
-                <span>(HET: RP {report.hetResmi.toLocaleString('id-ID')} • DISPARITAS: +RP {report.selisih.toLocaleString('id-ID')})</span>
-              </div>
-            )}
-
-            {/* Case Description */}
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded space-y-1">
-              <span className="font-mono text-[10px] font-bold text-slate-500 uppercase block">
-                FAKTA PENGADUAN WARGA:
+              <span className={`px-2.5 py-1 rounded text-xs font-bold border ${report.status === 'selesai' ? 'bg-gov-light text-gov-forest border-gov-border' : report.status === 'ditolak' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-slate-100 text-slate-800 border-slate-300'}`}>
+                {REPORT_STATUS[report.status]?.label}
               </span>
-              <p className="text-xs text-slate-800 leading-relaxed font-sans">{report.deskripsi}</p>
             </div>
 
-            {/* TWO-SIDED RESOLUTION INTERACTION MODULE (PEMBEDA UTAMA) */}
-            {report.status === 'MENUNGGU_KONFIRMASI' && (
-              <div className="bg-amber-light border-2 border-amber-500 rounded p-5 space-y-4 font-mono">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-amber-950 font-bold text-sm">
-                    <UserCheck className="w-5 h-5 text-amber-700" />
-                    <span>INSTANSI TELAH MELAPORKAN TINDAK LANJUT. KONFIRMASI STATUS OLEH PELAPOR:</span>
-                  </div>
-                  <p className="font-sans text-xs text-slate-700 leading-relaxed">
-                    Sesuai prinsip transparansi TANITERANG, laporan <strong>tidak dapat ditutup sepihak oleh dinas/kios</strong>. Apakah Anda telah menerima hak pupuk bersubsidi dengan harga resmi di lapangan?
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label htmlFor="inputCatatanPelapor" className="block text-[11px] font-bold text-slate-800 uppercase">
-                    CATATAN AKHIR ANDA:
-                  </label>
-                  <input
-                    id="inputCatatanPelapor"
-                    type="text"
-                    placeholder="Contoh: Kios sudah menjual kembali dengan harga normal Rp 90.000 / atau jatah saya belum diserahkan"
-                    value={konfirmasiCatatan}
-                    onChange={(e) => setKonfirmasiCatatan(e.target.value)}
-                    className="w-full px-3 py-2 rounded border border-amber-400 bg-white text-xs font-sans focus:border-slate-800"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  <button
-                    onClick={() => handleConfirmAction(true)}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded bg-gov-forest hover:bg-gov-hover text-white text-xs font-bold transition-colors shadow-sm"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>SUDAH BERES (TUTUP KASUS RESMI)</span>
-                  </button>
-                  <button
-                    onClick={() => handleConfirmAction(false)}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded bg-white hover:bg-red-50 text-red-700 border-2 border-red-400 text-xs font-bold transition-colors shadow-sm"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span>BELUM BERES (BUKA KEMBALI KASUS)</span>
-                  </button>
-                </div>
-              </div>
+            {report.due_at && report.status !== 'selesai' && (
+              <p className={`flex items-center gap-2 text-sm p-3 rounded border ${report.overdue ? 'bg-red-50 border-red-200 text-red-800' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
+                {report.overdue ? <AlertTriangle className="w-4 h-4 shrink-0" /> : <Clock className="w-4 h-4 shrink-0" />}
+                {report.overdue ? 'Terlambat: ' : 'Batas waktu tahap ini: '}<strong>{dt(report.due_at)}</strong>
+                {report.status === 'selesai_instansi' && <span>(batas konfirmasi Anda)</span>}
+              </p>
             )}
-          </div>
+            {report.assigned_agency && <p className="text-xs text-slate-700 flex gap-1.5"><Building2 className="w-4 h-4" />Ditangani: <strong>{report.assigned_agency}</strong></p>}
 
-          {/* Vertical Disposition Timeline */}
-          <div className="bg-white border border-slate-200 rounded-gov p-6 space-y-4 font-mono">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-2">
-              <Clock className="w-4 h-4 text-gov-forest" />
-              <span>RIWAYAT AUDIT & TAHAPAN DISPOSISI PENGAWASAN</span>
-            </h3>
+            {/* Tracker tahap */}
+            {report.status !== 'ditolak' && (
+              <ol className="space-y-0">
+                {STATUS_STEPS.map((s, i) => {
+                  const done = i < current || (i === current && s.id === 'selesai');
+                  const active = i === current && s.id !== 'selesai';
+                  const ev = lastByStatus[s.id];
+                  return (
+                    <li key={s.id} className="grid grid-cols-[1.5rem_1fr] gap-3">
+                      <div className="flex flex-col items-center">
+                        {done ? <CheckCircle2 className="w-6 h-6 text-gov-forest" /> : active ? <Clock className="w-6 h-6 text-amber-600" /> : <Circle className="w-6 h-6 text-slate-300" />}
+                        {i < STATUS_STEPS.length - 1 && <span className={`w-0.5 flex-1 min-h-[1.25rem] ${done ? 'bg-gov-forest' : 'bg-slate-200'}`} />}
+                      </div>
+                      <div className="pb-4">
+                        <p className={`text-sm font-bold ${done || active ? 'text-slate-900' : 'text-slate-400'}`}>{s.label}{active && <span className="ml-2 text-[11px] font-mono text-amber-700">SEKARANG</span>}</p>
+                        {ev && <p className="text-[11px] text-slate-500">{dt(ev.created_at)}{ev.agency ? ` • ${ev.agency}` : ''}</p>}
+                        {!ev && s.sla && (active || !done) && <p className="text-[11px] text-slate-400">{s.sla}</p>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
 
-            <div className="relative pl-6 space-y-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-300">
-              {report.timeline.map((item, idx) => (
-                <div key={idx} className="relative">
-                  <div className={`absolute -left-6 top-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
-                    idx === report.timeline.length - 1 ? 'bg-gov-forest' : 'bg-slate-400'
-                  }`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
-                  </div>
+            {(report.price_paid_per_kg && report.het_per_kg) && (
+              <p className="text-xs text-slate-700">Harga dibayar {rp(report.price_paid_per_kg)}/kg, HET saat kejadian {rp(report.het_per_kg)}/kg.</p>
+            )}
+          </section>
 
-                  <div className="space-y-1">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-                      <strong className="text-xs font-bold text-slate-900">{item.label}</strong>
-                      <span className="text-[10px] text-slate-500">{item.waktu}</span>
-                    </div>
-                    <p className="font-sans text-xs text-slate-600 leading-relaxed bg-slate-50 border border-slate-200 p-2.5 rounded">
-                      {item.catatan}
-                    </p>
-                  </div>
-                </div>
+          {report.status === 'selesai_instansi' && (
+            <section className="bg-amber-light border-2 border-amber-500 rounded-gov p-5 space-y-3">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2"><UserCheck className="w-5 h-5" />Instansi menyatakan selesai. Apakah masalah Anda benar-benar teratasi?</h3>
+              <p className="text-xs text-slate-700">Laporan baru dihitung "selesai menurut pelapor" jika Anda mengonfirmasi. Jika belum, laporan dibuka kembali.</p>
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2} placeholder="Catatan (opsional), mis. kios sudah menjual sesuai HET" className="w-full px-3 py-2 rounded border border-slate-300 text-sm" />
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => confirm(true)} disabled={loading} className="inline-flex items-center gap-2 px-4 py-2.5 rounded bg-gov-forest text-white text-sm font-bold"><Check className="w-4 h-4" />Ya, sudah teratasi</button>
+                <button onClick={() => confirm(false)} disabled={loading} className="inline-flex items-center gap-2 px-4 py-2.5 rounded border-2 border-slate-800 bg-white text-sm font-bold"><RotateCcw className="w-4 h-4" />Belum, buka kembali</button>
+              </div>
+            </section>
+          )}
+          {feedback && <p className="text-sm text-gov-forest bg-gov-light border border-gov-border rounded p-3" role="status">{feedback}</p>}
+
+          <section className="bg-white border border-slate-200 rounded-gov p-5 space-y-3">
+            <h3 className="text-sm font-black text-slate-900">Riwayat lengkap</h3>
+            <ol className="space-y-3">
+              {[...report.events].reverse().map((e, i) => (
+                <li key={i} className="text-xs border-l-2 border-slate-300 pl-3">
+                  <p className="font-bold text-slate-900">{REPORT_STATUS[e.status]?.label}</p>
+                  <p className="text-slate-500">{dt(e.created_at)} • {ACTOR[e.actor]}{e.agency ? ` (${e.agency})` : ''}</p>
+                  {e.note && <p className="text-slate-700 mt-0.5">{e.note}</p>}
+                </li>
               ))}
-            </div>
-          </div>
-        </div>
+            </ol>
+          </section>
+        </>
       )}
     </div>
   );

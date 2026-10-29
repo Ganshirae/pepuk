@@ -1,32 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import Home from './pages/Home';
-import DataMap from './pages/DataMap';
+import Dashboard from './pages/Dashboard';
 import ReportForm from './pages/ReportForm';
 import ReportReceipt from './pages/ReportReceipt';
 import TrackReport from './pages/TrackReport';
 import MyReports from './pages/MyReports';
+import Eligibility from './pages/Eligibility';
+import OfficerPanel from './pages/OfficerPanel';
 import { getMyReports } from './utils/storage';
+import { loadReferenceData } from './lib/supabase';
+
+// Halaman petugas tidak ada di menu publik: buka lewat /#petugas
+const initialPage = () => (window.location.hash === '#petugas' ? 'officer' : 'home');
 
 export default function App() {
-  const [activePage, setActivePage] = useState('home');
-  const [preselectedRegionKode, setPreselectedRegionKode] = useState('');
+  const [activePage, setActivePage] = useState(initialPage);
   const [prefilledReportData, setPrefilledReportData] = useState(null);
   const [submittedReport, setSubmittedReport] = useState(null);
-  const [lookupCode, setLookupCode] = useState('');
+  const [lookup, setLookup] = useState(null);
   const [myReportsCount, setMyReportsCount] = useState(0);
+  const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    loadReferenceData().then(setData).catch((e) => setLoadError(e.message));
+  }, []);
 
   // Update badge count
   useEffect(() => {
-    const list = getMyReports();
-    setMyReportsCount(list.length);
+    setMyReportsCount(getMyReports().length);
   }, [activePage]);
 
   // Scroll to top on page transition
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (activePage !== 'report') setPrefilledReportData((p) => (activePage === 'home' ? null : p));
   }, [activePage]);
+
+  const needsData = ['home', 'report'].includes(activePage);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F6F8F7] text-[#1A1F1C]">
@@ -39,23 +51,25 @@ export default function App() {
 
       {/* Main Page Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {activePage === 'home' && (
-          <Home
-            setActivePage={setActivePage}
-            setSelectedRegionKode={setPreselectedRegionKode}
-          />
+        {needsData && !data && (
+          <div className="py-16 text-center text-sm text-slate-600" role="status">
+            {loadError ? (
+              <p className="text-red-700">Gagal memuat data: {loadError}. Periksa koneksi lalu muat ulang halaman.</p>
+            ) : 'Memuat data resmi…'}
+          </div>
         )}
 
-        {activePage === 'data' && (
-          <DataMap
+        {activePage === 'home' && data && (
+          <Dashboard
+            data={data}
             setActivePage={setActivePage}
-            preselectedKode={preselectedRegionKode}
             setPrefilledReportData={setPrefilledReportData}
           />
         )}
 
-        {activePage === 'report' && (
+        {activePage === 'report' && data && (
           <ReportForm
+            data={data}
             setActivePage={setActivePage}
             setSubmittedReport={setSubmittedReport}
             prefilledData={prefilledReportData}
@@ -66,13 +80,13 @@ export default function App() {
           <ReportReceipt
             report={submittedReport}
             setActivePage={setActivePage}
-            setLookupCode={setLookupCode}
+            setLookupCode={setLookup}
           />
         )}
 
         {activePage === 'track' && (
           <TrackReport
-            initialCode={lookupCode}
+            initialLookup={lookup}
             setActivePage={setActivePage}
           />
         )}
@@ -80,9 +94,13 @@ export default function App() {
         {activePage === 'my-reports' && (
           <MyReports
             setActivePage={setActivePage}
-            setLookupCode={setLookupCode}
+            setLookupCode={setLookup}
           />
         )}
+
+        {activePage === 'eligibility' && <Eligibility setActivePage={setActivePage} />}
+
+        {activePage === 'officer' && <OfficerPanel />}
       </main>
 
       {/* Persistent Footer */}

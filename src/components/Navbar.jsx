@@ -1,13 +1,13 @@
 import React from 'react';
-import { LayoutDashboard, Map, Send, Search, BookmarkCheck, Shield, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, Send, Search, BookmarkCheck, ClipboardCheck } from 'lucide-react';
 
 export default function Navbar({ activePage, setActivePage, myReportsCount = 0 }) {
   const navTabs = [
-    { id: 'home', label: 'Ringkasan & Wilayah', icon: LayoutDashboard },
-    { id: 'data', label: 'Peta Spasial & Data', icon: Map },
-    { id: 'report', label: 'Form Pengaduan', icon: Send, isAction: true },
-    { id: 'track', label: 'Lacak Disposisi', icon: Search },
-    { id: 'my-reports', label: 'Berkas Tersimpan', icon: BookmarkCheck, badge: myReportsCount }
+    { id: 'home', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'eligibility', label: 'Cek Hak Subsidi', icon: ClipboardCheck },
+    { id: 'track', label: 'Lacak Laporan', icon: Search },
+    { id: 'my-reports', label: 'Laporan Saya', icon: BookmarkCheck, badge: myReportsCount },
+    { id: 'report', label: 'Lapor', icon: Send, isAction: true }
   ];
 
   return (
@@ -18,10 +18,10 @@ export default function Navbar({ activePage, setActivePage, myReportsCount = 0 }
           <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
           <span className="font-bold text-white uppercase tracking-wider">PORTAL KETERBUKAAN PUBLIK</span>
           <span className="text-slate-500">•</span>
-          <span className="text-slate-300">PILOT PROVINSI NUSA TENGGARA BARAT</span>
+          <span className="text-slate-300">NASIONAL 38 PROVINSI • DETAIL NTB</span>
         </div>
         <div className="hidden sm:flex items-center gap-4 text-[10px] text-slate-400">
-          <span>SUMBER DATA: e-ALOKASI KEMENTAN & DISTANBUN NTB</span>
+          <span>SUMBER DATA: SATU DATA KEMENTAN & SATU DATA NTB</span>
           <span>•</span>
           <span className="text-emerald-400 font-bold">AKSES PUBLIK TANPA NIK / KTP</span>
         </div>
@@ -45,7 +45,7 @@ export default function Navbar({ activePage, setActivePage, myReportsCount = 0 }
                   TANI<span className="text-gov-forest">TERANG</span>
                 </span>
                 <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold">
-                  NTB PILOT
+                  BETA
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium hidden sm:block">

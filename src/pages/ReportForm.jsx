@@ -1,624 +1,362 @@
-import React, { useState, useEffect } from 'react';
-import { NTB_REGIONS, KECAMATAN_MAP, HET_RATES } from '../data/ntbData';
-import { saveNewReport, saveDraft, getDraft, clearDraft } from '../utils/storage';
-import { generatePublicId, generateSecretCode, hashSecretCode } from '../utils/crypto';
-import {
-  ShieldAlert,
-  ChevronLeft,
-  ChevronRight,
-  Upload,
-  Trash2,
-  Send,
-  FileCheck,
-  AlertCircle
-} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ShieldAlert, ChevronLeft, ChevronRight, Upload, Trash2, Send, AlertCircle, Lock } from 'lucide-react';
+import { REPORT_CATEGORIES, KECAMATAN_MAP } from '../data/ntbData';
+import { saveDraft, getDraft, clearDraft, addMyReport } from '../utils/storage';
+import { supabase, rpc } from '../lib/supabase';
 
-export default function ReportForm({ setActivePage, setSubmittedReport, prefilledData }) {
+const MAX_PHOTOS = 3;
+const MAX_MB = 5;
+const today = () => new Date().toISOString().slice(0, 10);
+const rp = (n) => `Rp${Math.round(n).toLocaleString('id-ID')}`;
+
+// Gambar ulang lewat canvas: membuang metadata EXIF (termasuk lokasi GPS) dan memperkecil ukuran.
+async function stripExif(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+}
+
+const field = 'w-full px-3 py-2.5 rounded border border-slate-300 text-sm focus:border-slate-800';
+const labelCls = 'block text-xs font-bold text-slate-900 mb-1';
+
+export default function ReportForm({ data, setActivePage, setSubmittedReport, prefilledData }) {
+  const { regions, fertilizers, het } = data;
+  const provinces = useMemo(() => regions.filter((r) => r.level === 'provinsi'), [regions]);
+  const kabkotaOf = (prov) => regions.filter((r) => r.parent_code === prov);
+  const hetOf = (fid) => het.find((h) => h.fertilizer_id === fid);
+
+  // Prefill dari dashboard (kode bisa provinsi atau kab/kota)
+  const pre = prefilledData || {};
+  const preRegion = regions.find((r) => r.code === pre.regionCode);
+  const initial = {
+    category: pre.category || 'harga_di_atas_het',
+    fertilizerId: pre.fertilizerId || 'urea',
+    province: preRegion ? preRegion.parent_code || preRegion.code : '52',
+    kabkota: preRegion?.level === 'kabkota' ? preRegion.code : '',
+    kabkotaText: '',
+    kecamatan: '',
+    desa: '',
+    incidentDate: today(),
+    kioskName: '',
+    quantityKg: pre.quantityKg ? String(pre.quantityKg) : '',
+    pricePaidPerKg: pre.pricePaidPerKg ? String(pre.pricePaidPerKg) : '',
+    description: ''
+  };
+
   const [step, setStep] = useState(1);
+  const [f, setF] = useState(() => (prefilledData ? initial : { ...initial, ...(getDraft() || {}) }));
+  const [photos, setPhotos] = useState([]); // { file, url }
+  const [contact, setContact] = useState('');
+  const [agree, setAgree] = useState(false);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Form states
-  const [jenisMasalah, setJenisMasalah] = useState('harga_di_atas_het');
-  const [jenisPupuk, setJenisPupuk] = useState('Pupuk Urea');
-  const [kodeWilayah, setKodeWilayah] = useState(prefilledData?.kodeWilayah || '5203');
-  const [kecamatan, setKecamatan] = useState('');
-  const [desa, setDesa] = useState('');
-  const [tanggalKejadian, setTanggalKejadian] = useState(() => new Date().toISOString().slice(0, 10));
-  const [namaKios, setNamaKios] = useState('');
-  const [hargaDibayar, setHargaDibayar] = useState('');
-  const [deskripsi, setDeskripsi] = useState('');
-  const [lampiran, setLampiran] = useState([]);
-  const [kontakOpsional, setKontakOpsional] = useState('');
-  const [setujuPrivasi, setSetujuPrivasi] = useState(true);
-  const [captchaAnswer, setCaptchaAnswer] = useState('');
-  const [captchaNum1] = useState(5);
-  const [captchaNum2] = useState(4);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
 
-  // Restore draft
+  // Draf otomatis (tanpa kontak & foto)
   useEffect(() => {
-    const draft = getDraft();
-    if (draft && !prefilledData) {
-      if (draft.jenisMasalah) setJenisMasalah(draft.jenisMasalah);
-      if (draft.jenisPupuk) setJenisPupuk(draft.jenisPupuk);
-      if (draft.kodeWilayah) setKodeWilayah(draft.kodeWilayah);
-      if (draft.kecamatan) setKecamatan(draft.kecamatan);
-      if (draft.namaKios) setNamaKios(draft.namaKios);
-      if (draft.hargaDibayar) setHargaDibayar(draft.hargaDibayar);
-      if (draft.deskripsi) setDeskripsi(draft.deskripsi);
+    const t = setTimeout(() => saveDraft(f), 400);
+    return () => clearTimeout(t);
+  }, [f]);
+
+  useEffect(() => () => photos.forEach((p) => URL.revokeObjectURL(p.url)), [photos]);
+
+  const kabkotaList = kabkotaOf(f.province);
+  const hasKabkotaData = kabkotaList.length > 0;
+  const kecamatanList = KECAMATAN_MAP[f.kabkota] || [];
+  const isPrice = f.category === 'harga_di_atas_het';
+  const needsFert = isPrice || ['stok_kosong', 'paket_paksa', 'pupuk_palsu', 'penebusan_diwakilkan'].includes(f.category);
+  const h = hetOf(f.fertilizerId);
+  const priceNum = Number(f.pricePaidPerKg) || 0;
+  const overBy = h && priceNum > h.price_per_kg ? priceNum - h.price_per_kg : 0;
+
+  const validate = (s) => {
+    const e = {};
+    if (s === 1) {
+      if (!f.category) e.category = 'Pilih jenis masalah.';
+      if (needsFert && !f.fertilizerId) e.fertilizerId = 'Pilih jenis pupuk.';
     }
-  }, [prefilledData]);
-
-  // Auto-save draft
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      saveDraft({
-        jenisMasalah,
-        jenisPupuk,
-        kodeWilayah,
-        kecamatan,
-        namaKios,
-        hargaDibayar,
-        deskripsi
-      });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [jenisMasalah, jenisPupuk, kodeWilayah, kecamatan, namaKios, hargaDibayar, deskripsi]);
-
-  const currentHet = HET_RATES.find(h => h.nama.toLowerCase().includes(jenisPupuk.toLowerCase().replace('pupuk ', ''))) || HET_RATES[0];
-  const hargaNumber = parseInt(hargaDibayar) || 0;
-  const isOverHet = hargaNumber > currentHet.hetPerSak;
-  const selisihHarga = isOverHet ? hargaNumber - currentHet.hetPerSak : 0;
-
-  const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (lampiran.length + files.length > 3) {
-      setErrors(prev => ({ ...prev, lampiran: 'Batas maksimal 3 foto bukti saja.' }));
-      return;
+    if (s === 2) {
+      if (!f.province) e.province = 'Pilih provinsi.';
+      if (hasKabkotaData && !f.kabkota) e.kabkota = 'Pilih kabupaten/kota.';
+      if (!hasKabkotaData && !f.kabkotaText.trim()) e.kabkota = 'Tulis nama kabupaten/kota.';
+      if (!f.incidentDate) e.incidentDate = 'Tanggal kejadian wajib diisi.';
+      else if (f.incidentDate > today()) e.incidentDate = 'Tanggal tidak boleh di masa depan.';
     }
-
-    const validFiles = [];
-    for (const file of files) {
-      if (file.size > 2 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, lampiran: `File "${file.name}" melebihi 2MB. Kecilkan ukuran foto.` }));
-        return;
-      }
-      validFiles.push({
-        nama: file.name,
-        ukuran: `${(file.size / 1024).toFixed(0)} KB`,
-        previewUrl: URL.createObjectURL(file)
-      });
+    if (s === 3) {
+      if (isPrice && !(priceNum > 0)) e.pricePaidPerKg = 'Isi harga yang Anda bayar per kg.';
+      if (f.quantityKg && !(Number(f.quantityKg) > 0)) e.quantityKg = 'Jumlah harus lebih dari 0.';
+      const len = f.description.trim().length;
+      if (len < 20) e.description = `Ceritakan kronologi minimal 20 karakter (sekarang ${len}).`;
+      if (len > 2000) e.description = 'Maksimal 2000 karakter.';
     }
-
-    setLampiran(prev => [...prev, ...validFiles]);
-    setErrors(prev => {
-      const copy = { ...prev };
-      delete copy.lampiran;
-      return copy;
-    });
+    if (s === 4 && !agree) e.agree = 'Centang pernyataan ini untuk mengirim.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const removeFile = (index) => {
-    setLampiran(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const validateStep = (currentStep) => {
-    const newErrors = {};
-    if (currentStep === 1) {
-      if (!jenisMasalah) newErrors.jenisMasalah = 'Pilih klasifikasi pelanggaran.';
-      if (!jenisPupuk) newErrors.jenisPupuk = 'Pilih jenis pupuk.';
-    } else if (currentStep === 2) {
-      if (!kodeWilayah) newErrors.kodeWilayah = 'Pilih kabupaten/kota lokasi kejadian.';
-      if (!tanggalKejadian) newErrors.tanggalKejadian = 'Tanggal kejadian wajib diisi.';
-    } else if (currentStep === 3) {
-      if (jenisMasalah === 'harga_di_atas_het') {
-        if (!hargaDibayar || isNaN(hargaNumber) || hargaNumber <= 0) {
-          newErrors.hargaDibayar = 'Masukkan harga riil yang Anda bayarkan per sak.';
-        }
-      }
-      if (!deskripsi || deskripsi.trim().length < 10) {
-        newErrors.deskripsi = 'Tuliskan rincian kronologi singkat (minimal 10 karakter).';
-      }
-    } else if (currentStep === 4) {
-      if (!setujuPrivasi) {
-        newErrors.privasi = 'Persetujuan pernyataan integritas data wajib dicentang.';
-      }
-      if (parseInt(captchaAnswer) !== captchaNum1 + captchaNum2) {
-        newErrors.captcha = `Jawaban salah. Berapa ${captchaNum1} + ${captchaNum2}?`;
-      }
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleNext = () => {
-    if (validateStep(step)) {
-      setStep(prev => prev + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  const handlePrev = () => {
-    setStep(prev => prev - 1);
+  const go = (d) => {
+    if (d > 0 && !validate(step)) return;
+    setStep((s) => s + d);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateStep(4)) return;
-
-    setIsSubmitting(true);
-
-    const publicId = generatePublicId();
-    const secretCode = generateSecretCode();
-    const tokenHash = await hashSecretCode(secretCode);
-
-    const selectedRegionObj = NTB_REGIONS.find(r => r.kode === kodeWilayah);
-    const namaWilayah = selectedRegionObj ? selectedRegionObj.nama : 'Wilayah NTB';
-
-    const now = new Date();
-    const nowStr = now.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) + ' WITA';
-    const deadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const deadlineStr = deadline.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) + ' WITA';
-
-    const newReport = {
-      idPublik: publicId,
-      tokenHash: tokenHash,
-      secretCodePlain: secretCode,
-      status: 'DITERIMA',
-      statusLabel: 'Diterima Sistem Pengawasan',
-      kodeWilayah,
-      namaWilayah,
-      kecamatan: kecamatan || 'Kecamatan Belum Disebut',
-      desa: desa || 'Desa Belum Disebut',
-      jenisMasalah,
-      jenisPupuk,
-      hargaDibayar: hargaNumber,
-      hetResmi: currentHet.hetPerSak,
-      selisih: selisihHarga,
-      tanggalKejadian,
-      namaKios: namaKios ? namaKios.trim() : 'Tidak Disebutkan',
-      namaKiosVerified: false,
-      deskripsi,
-      lampiran,
-      kontakOpsional: kontakOpsional.trim() || null,
-      timeline: [
-        {
-          status: 'DITERIMA',
-          label: 'Pengaduan Dicatat dalam Doket Pengawasan',
-          waktu: nowStr,
-          catatan: 'Laporan berhasil dicatat dalam antrean audit awal. Belum dipublikasikan ke publik demi perlindungan saksi.'
-        }
-      ],
-      batasRespons: deadlineStr,
-      dibuatPada: nowStr
-    };
-
-    saveNewReport(newReport);
-    clearDraft();
-
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSubmittedReport(newReport);
-      setActivePage('receipt');
-    }, 500);
+  const addPhotos = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (photos.length + files.length > MAX_PHOTOS) return setErrors({ photos: `Maksimal ${MAX_PHOTOS} foto.` });
+    const bad = files.find((x) => !x.type.startsWith('image/') || x.size > MAX_MB * 1024 * 1024);
+    if (bad) return setErrors({ photos: `"${bad.name}" bukan gambar atau lebih dari ${MAX_MB} MB.` });
+    setErrors({});
+    setPhotos((p) => [...p, ...files.map((file) => ({ file, url: URL.createObjectURL(file) }))]);
   };
 
-  const availableKecamatan = KECAMATAN_MAP[kodeWilayah] || [];
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!validate(4)) return;
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const photoPaths = [];
+      for (const p of photos) {
+        const path = `reports/${crypto.randomUUID()}.jpg`;
+        const blob = await stripExif(p.file);
+        const { error } = await supabase.storage.from('report-evidence').upload(path, blob, { contentType: 'image/jpeg' });
+        if (error) throw new Error(`Foto gagal diunggah: ${error.message}`);
+        photoPaths.push(path);
+      }
+
+      const regionName = regions.find((r) => r.code === (f.kabkota || f.province))?.name;
+      const res = await rpc('submit_report', {
+        p: {
+          category: f.category,
+          fertilizer_id: needsFert ? f.fertilizerId : null,
+          region_code: f.kabkota || f.province,
+          kabkota_name: hasKabkotaData ? null : f.kabkotaText,
+          kecamatan: f.kecamatan,
+          desa: f.desa,
+          kiosk_name: f.kioskName,
+          incident_date: f.incidentDate,
+          quantity_kg: f.quantityKg || null,
+          price_paid_per_kg: isPrice ? priceNum : f.pricePaidPerKg || null,
+          description: f.description,
+          contact,
+          photo_paths: photoPaths
+        }
+      });
+
+      const receipt = {
+        publicId: res.public_id,
+        secretCode: res.secret_code,
+        dueAt: res.due_at,
+        category: f.category,
+        fertilizerName: needsFert ? fertilizers.find((x) => x.id === f.fertilizerId)?.name : null,
+        regionName: hasKabkotaData ? regionName : `${f.kabkotaText}, ${regionName}`,
+        createdAt: new Date().toISOString(),
+        summary: { ...f, contactGiven: Boolean(contact.trim()), photoCount: photoPaths.length, hetPerKg: h?.price_per_kg }
+      };
+      addMyReport({ publicId: receipt.publicId, secretCode: receipt.secretCode, category: receipt.category, regionName: receipt.regionName, createdAt: receipt.createdAt });
+      clearDraft();
+      setSubmittedReport(receipt);
+      setActivePage('receipt');
+    } catch (err) {
+      setSubmitError(err.message || 'Laporan gagal dikirim. Periksa koneksi lalu coba lagi.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const Err = ({ k }) => (errors[k] ? <p className="text-xs text-red-700 mt-1 flex items-center gap-1" role="alert"><AlertCircle className="w-3.5 h-3.5" />{errors[k]}</p> : null);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Institutional Form Header */}
-      <div className="bg-white border border-slate-200 p-6 rounded-gov space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-bold text-gov-forest bg-gov-light px-2 py-0.5 rounded border border-gov-border">
-            FORMULIR PENGADUAN RESMI
-          </span>
-          <span className="text-slate-400">•</span>
-          <span className="text-xs font-mono text-slate-500">DILINDUNGI PROTOKOL ANONIM</span>
-        </div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-          Formulir Pengaduan Pelanggaran Distribusi Pupuk
-        </h1>
-        <p className="text-xs text-slate-600 leading-relaxed">
-          Gunakan formulir ini untuk melaporkan penjualan pupuk bersubsidi di atas HET, kelangkaan jatah, atau penolakan penebusan resmi. Laporan ini dilacak menggunakan kode rahasia dan tidak dapat ditutup tanpa konfirmasi Anda.
+    <div className="max-w-3xl mx-auto space-y-5">
+      <header className="bg-white border border-slate-200 p-5 sm:p-6 rounded-gov space-y-2">
+        <p className="font-mono text-[11px] font-bold text-gov-forest uppercase tracking-wider">Lapor tanpa akun, tanpa NIK</p>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Laporkan masalah pupuk bersubsidi</h1>
+        <p className="text-sm text-slate-600">
+          Anda akan menerima <strong>ID laporan</strong> dan <strong>kode rahasia</strong> untuk memantau tindak lanjut. Laporan tidak bisa ditutup petugas tanpa konfirmasi Anda.
         </p>
-      </div>
+      </header>
 
-      {/* Step Progress Bar (Strict Grid Segment - Non AI-Slop) */}
-      <div className="bg-white border border-slate-200 rounded-gov p-4">
-        <div className="grid grid-cols-4 gap-2 text-center font-mono text-xs">
-          {[
-            { num: 1, title: '1. MASALAH' },
-            { num: 2, title: '2. LOKASI' },
-            { num: 3, title: '3. BUKTI' },
-            { num: 4, title: '4. VALIDASI' }
-          ].map((s) => (
-            <div
-              key={s.num}
-              className={`py-2 px-1 border-b-2 font-bold transition-colors ${
-                step === s.num
-                  ? 'border-gov-forest text-gov-forest bg-slate-50'
-                  : step > s.num
-                  ? 'border-slate-800 text-slate-900'
-                  : 'border-slate-200 text-slate-400'
-              }`}
-            >
-              {s.title}
-            </div>
-          ))}
-        </div>
-      </div>
+      <ol className="grid grid-cols-4 gap-2 text-center text-xs font-bold" aria-label="Langkah">
+        {['Masalah', 'Lokasi', 'Rincian & bukti', 'Kirim'].map((t, i) => (
+          <li key={t} aria-current={step === i + 1 ? 'step' : undefined}
+            className={`py-2 rounded border ${step === i + 1 ? 'bg-gov-forest text-white border-gov-forest' : step > i + 1 ? 'bg-gov-light text-gov-forest border-gov-border' : 'bg-white text-slate-500 border-slate-200'}`}>
+            {i + 1}. {t}
+          </li>
+        ))}
+      </ol>
 
-      {/* Main Form Body */}
-      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-gov p-6 sm:p-8 space-y-6">
-        {/* STEP 1: KLASIFIKASI PELANGGARAN */}
+      <form onSubmit={submit} className="bg-white border border-slate-200 rounded-gov p-5 sm:p-6 space-y-5" noValidate>
         {step === 1 && (
-          <div className="space-y-5">
-            <div>
-              <label className="block text-xs font-bold font-mono text-slate-900 uppercase mb-2">
-                PILIH KLASIFIKASI KENDALA DISTRIBUSI <span className="text-red-600">*</span>
-              </label>
+          <>
+            <fieldset>
+              <legend className={labelCls}>Apa masalahnya? <span className="text-red-600">*</span></legend>
               <div className="space-y-2">
-                {[
-                  {
-                    id: 'harga_di_atas_het',
-                    title: 'Penjualan di Atas Harga Eceran Tertinggi (HET)',
-                    desc: 'Kios mematok harga lebih tinggi dari ketetapan resmi (contoh: Urea > Rp 90.000/sak atau NPK > Rp 92.000/sak).'
-                  },
-                  {
-                    id: 'tidak_kebagian',
-                    title: 'Jatah Habis / Penolakan Penebusan Kios',
-                    desc: 'Petani terdaftar di e-RDKK namun pihak pengecer menyatakan kuota habis atau menolak melayani.'
-                  },
-                  {
-                    id: 'tidak_terdaftar',
-                    title: 'Nama Tidak Masuk ke Daftar e-RDKK',
-                    desc: 'Sudah menyetor data melalui kelompok tani/penyuluh namun tidak tercatat saat diverifikasi di kios.'
-                  },
-                  {
-                    id: 'kualitas_buruk',
-                    title: 'Kualitas Pupuk Rusak / Kemasan Tidak Sesuai',
-                    desc: 'Pupuk menggumpal, rusak akibat penyimpanan basah, atau berat timbangan kurang dari kemasan resmi.'
-                  }
-                ].map((item) => (
-                  <label
-                    key={item.id}
-                    onClick={() => setJenisMasalah(item.id)}
-                    className={`block p-3.5 border rounded cursor-pointer transition-colors ${
-                      jenisMasalah === item.id
-                        ? 'border-gov-forest bg-gov-light/60 border-l-4 border-l-gov-forest'
-                        : 'border-slate-200 hover:border-slate-400 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <strong className="text-sm font-bold text-slate-900">{item.title}</strong>
-                      <input
-                        type="radio"
-                        name="masalah"
-                        checked={jenisMasalah === item.id}
-                        onChange={() => setJenisMasalah(item.id)}
-                        className="text-gov-forest focus:ring-gov-forest"
-                      />
-                    </div>
-                    <p className="text-xs text-slate-600 mt-1">{item.desc}</p>
+                {REPORT_CATEGORIES.map((c) => (
+                  <label key={c.id} className={`flex gap-3 p-3 border rounded cursor-pointer ${f.category === c.id ? 'border-gov-forest bg-gov-light/60 border-l-4' : 'border-slate-200 hover:border-slate-400'}`}>
+                    <input type="radio" name="category" value={c.id} checked={f.category === c.id} onChange={set('category')} className="mt-1 text-gov-forest" />
+                    <span><strong className="text-sm text-slate-900 block">{c.title}</strong><span className="text-xs text-slate-600">{c.desc}</span></span>
                   </label>
                 ))}
               </div>
-            </div>
-
-            <div>
-              <label htmlFor="selectPupuk" className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                KOMODITAS PUPUK BERSUBSIDI TERKAIT <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="selectPupuk"
-                value={jenisPupuk}
-                onChange={(e) => setJenisPupuk(e.target.value)}
-                className="w-full px-3 py-2 rounded border border-slate-300 font-mono text-xs focus:border-slate-800"
-              >
-                <option value="Pupuk Urea">Pupuk Urea (HET Resmi: Rp 90.000 / sak 50kg)</option>
-                <option value="Pupuk NPK (Phonska)">Pupuk NPK Phonska (HET Resmi: Rp 92.000 / sak 50kg)</option>
-                <option value="NPK Formula Khusus (Kakao)">NPK Formula Khusus Kakao (HET Resmi: Rp 132.000 / sak 50kg)</option>
-                <option value="Pupuk Organik">Pupuk Organik (HET Resmi: Rp 25.600 / sak 40kg)</option>
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 2: LOKASI & WAKTU */}
-        {step === 2 && (
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="selectKabupaten" className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                KABUPATEN / KOTA (PROVINSI NTB) <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="selectKabupaten"
-                value={kodeWilayah}
-                onChange={(e) => {
-                  setKodeWilayah(e.target.value);
-                  setKecamatan('');
-                }}
-                className="w-full px-3 py-2 rounded border border-slate-300 font-mono text-xs focus:border-slate-800"
-              >
-                {NTB_REGIONS.map((r) => (
-                  <option key={r.kode} value={r.kode}>
-                    [{r.kode}] {r.nama} (Pulau {r.pulau})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Err k="category" />
+            </fieldset>
+            {needsFert && (
               <div>
-                <label htmlFor="selectKecamatan" className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                  KECAMATAN
-                </label>
-                <select
-                  id="selectKecamatan"
-                  value={kecamatan}
-                  onChange={(e) => setKecamatan(e.target.value)}
-                  className="w-full px-3 py-2 rounded border border-slate-300 font-mono text-xs focus:border-slate-800"
-                >
-                  <option value="">-- Pilih Kecamatan Terkait --</option>
-                  {availableKecamatan.map((kec) => (
-                    <option key={kec} value={kec}>{kec}</option>
+                <label htmlFor="fert" className={labelCls}>Jenis pupuk <span className="text-red-600">*</span></label>
+                <select id="fert" value={f.fertilizerId} onChange={set('fertilizerId')} className={field}>
+                  {fertilizers.filter((x) => hetOf(x.id)).map((x) => (
+                    <option key={x.id} value={x.id}>{x.name} (HET {rp(hetOf(x.id).price_per_kg)}/kg)</option>
                   ))}
                 </select>
+                <Err k="fertilizerId" />
               </div>
+            )}
+          </>
+        )}
 
-              <div>
-                <label htmlFor="inputDesa" className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                  DESA / DUSUN (OPSIONAL)
-                </label>
-                <input
-                  id="inputDesa"
-                  type="text"
-                  placeholder="Nama desa atau lokasi kelompok tani"
-                  value={desa}
-                  onChange={(e) => setDesa(e.target.value)}
-                  className="w-full px-3 py-2 rounded border border-slate-300 text-xs focus:border-slate-800"
-                />
-              </div>
-            </div>
-
+        {step === 2 && (
+          <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor="inputTanggal" className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                  TANGGAL KEJADIAN <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="inputTanggal"
-                  type="date"
-                  value={tanggalKejadian}
-                  onChange={(e) => setTanggalKejadian(e.target.value)}
-                  className="w-full px-3 py-2 rounded border border-slate-300 font-mono text-xs focus:border-slate-800"
-                />
+                <label htmlFor="prov" className={labelCls}>Provinsi <span className="text-red-600">*</span></label>
+                <select id="prov" value={f.province} onChange={(e) => setF((p) => ({ ...p, province: e.target.value, kabkota: '', kecamatan: '' }))} className={field}>
+                  {provinces.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
+                </select>
+                <Err k="province" />
               </div>
-
               <div>
-                <label htmlFor="inputKios" className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                  NAMA KIOS PENGECER (OPSIONAL)
-                </label>
-                <input
-                  id="inputKios"
-                  type="text"
-                  placeholder="Contoh: Kios UD Tani Jaya"
-                  value={namaKios}
-                  onChange={(e) => setNamaKios(e.target.value)}
-                  className="w-full px-3 py-2 rounded border border-slate-300 text-xs focus:border-slate-800"
-                />
-                <span className="text-[10px] text-slate-500 font-mono block mt-1">
-                  *Nama kios dienkripsi dan tidak dipublikasikan sebelum diverifikasi tim pengawas.
-                </span>
+                <label htmlFor="kab" className={labelCls}>Kabupaten/kota <span className="text-red-600">*</span></label>
+                {hasKabkotaData ? (
+                  <select id="kab" value={f.kabkota} onChange={(e) => setF((p) => ({ ...p, kabkota: e.target.value, kecamatan: '' }))} className={field}>
+                    <option value="">Pilih…</option>
+                    {kabkotaList.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
+                  </select>
+                ) : (
+                  <input id="kab" value={f.kabkotaText} onChange={set('kabkotaText')} maxLength={100} placeholder="mis. Kabupaten Garut" className={field} />
+                )}
+                <Err k="kabkota" />
+              </div>
+              <div>
+                <label htmlFor="kec" className={labelCls}>Kecamatan</label>
+                {kecamatanList.length ? (
+                  <select id="kec" value={f.kecamatan} onChange={set('kecamatan')} className={field}>
+                    <option value="">Pilih…</option>
+                    {kecamatanList.map((k) => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                ) : (
+                  <input id="kec" value={f.kecamatan} onChange={set('kecamatan')} maxLength={100} className={field} />
+                )}
+              </div>
+              <div>
+                <label htmlFor="desa" className={labelCls}>Desa/kelurahan</label>
+                <input id="desa" value={f.desa} onChange={set('desa')} maxLength={100} className={field} />
+              </div>
+              <div>
+                <label htmlFor="tgl" className={labelCls}>Tanggal kejadian <span className="text-red-600">*</span></label>
+                <input id="tgl" type="date" max={today()} value={f.incidentDate} onChange={set('incidentDate')} className={field} />
+                <Err k="incidentDate" />
+              </div>
+              <div>
+                <label htmlFor="kios" className={labelCls}>Nama kios/pengecer</label>
+                <input id="kios" value={f.kioskName} onChange={set('kioskName')} maxLength={150} placeholder="mis. UD Tani Makmur" className={field} />
+                <p className="text-[11px] text-slate-500 mt-1">Nama kios tidak ditampilkan publik sebelum laporan diverifikasi.</p>
               </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* STEP 3: DETAIL, HARGA & BUKTI */}
         {step === 3 && (
-          <div className="space-y-4">
-            {/* Kalkulator Disparitas Harga (Jika masalah HET) */}
-            {jenisMasalah === 'harga_di_atas_het' && (
-              <div className="bg-slate-50 border border-slate-300 rounded-gov p-4 space-y-3 font-mono">
-                <div>
-                  <label htmlFor="inputHarga" className="block text-xs font-bold text-slate-900 uppercase mb-1">
-                    HARGA YANG DIMINTA KIOS PER SAK (RP) <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="inputHarga"
-                    type="number"
-                    placeholder="Contoh: 140000"
-                    value={hargaDibayar}
-                    onChange={(e) => setHargaDibayar(e.target.value)}
-                    className="w-full px-3 py-2 rounded border border-slate-400 font-bold text-sm tabular-nums focus:border-slate-900"
-                  />
-                  {errors.hargaDibayar && (
-                    <p className="mt-1 text-xs text-red-600 font-sans">{errors.hargaDibayar}</p>
-                  )}
-                </div>
-
-                {/* Audit HET Box */}
-                <div className="bg-white border border-slate-200 p-3 rounded text-xs space-y-1">
-                  <div className="flex justify-between text-slate-600">
-                    <span>HET RESMI (PERMENTAN 01/2024):</span>
-                    <strong className="text-slate-900">
-                      Rp {currentHet.hetPerSak.toLocaleString('id-ID')} / sak ({currentHet.kemasanKg}kg)
-                    </strong>
-                  </div>
-                  {isOverHet ? (
-                    <div className="flex justify-between text-red-700 font-bold pt-1 border-t border-slate-200">
-                      <span>DISPARITAS DI ATAS HARGA RESMI:</span>
-                      <span>+ Rp {selisihHarga.toLocaleString('id-ID')} / sak</span>
-                    </div>
-                  ) : hargaNumber > 0 ? (
-                    <div className="text-gov-forest font-bold pt-1 border-t border-slate-200">
-                      ✓ Harga yang Anda masukkan sesuai atau di bawah HET resmi.
-                    </div>
-                  ) : null}
-                </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="qty" className={labelCls}>Jumlah pupuk (kg)</label>
+                <input id="qty" type="number" inputMode="decimal" min="1" value={f.quantityKg} onChange={set('quantityKg')} placeholder="mis. 50" className={field} />
+                <Err k="quantityKg" />
               </div>
-            )}
-
-            <div>
-              <label htmlFor="inputKronologi" className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                KRONOLOGI / URAIAN FAKTA KEJADIAN <span className="text-red-600">*</span>
-              </label>
-              <textarea
-                id="inputKronologi"
-                rows={4}
-                placeholder="Jelaskan secara ringkas kejadian di lapangan (misalnya nama kios menolak memberikan struk, pupuk dibundel dengan barang lain, atau jadwal penebusan dipersulit)..."
-                value={deskripsi}
-                onChange={(e) => setDeskripsi(e.target.value)}
-                className="w-full px-3 py-2 rounded border border-slate-300 text-xs focus:border-slate-800"
-              ></textarea>
-              {errors.deskripsi && (
-                <p className="mt-1 text-xs text-red-600 font-sans">{errors.deskripsi}</p>
-              )}
+              <div>
+                <label htmlFor="price" className={labelCls}>Harga dibayar per kg (Rp) {isPrice && <span className="text-red-600">*</span>}</label>
+                <input id="price" type="number" inputMode="numeric" min="1" value={f.pricePaidPerKg} onChange={set('pricePaidPerKg')} placeholder={h ? `HET ${h.price_per_kg}` : ''} className={field} />
+                <Err k="pricePaidPerKg" />
+              </div>
             </div>
-
-            {/* Lampiran Bukti Foto */}
-            <div>
-              <label className="block text-xs font-bold font-mono text-slate-900 uppercase mb-1">
-                LAMPIRAN FOTO BUKTI (MAKSIMAL 3 BERKAS, @2MB)
-              </label>
-              <p className="text-[11px] text-slate-500 mb-2">
-                Dapat berupa foto struk pembayaran, foto kemasan pupuk, atau buku anggota kelompok tani.
+            {needsFert && h && priceNum > 0 && (
+              <p className={`text-xs p-3 rounded border ${overBy ? 'bg-red-50 border-red-200 text-red-800' : 'bg-gov-light border-gov-border text-gov-forest'}`} aria-live="polite">
+                {overBy
+                  ? `Lebih mahal ${rp(overBy)}/kg dari HET ${rp(h.price_per_kg)}/kg${Number(f.quantityKg) > 0 ? `, total kelebihan ${rp(overBy * Number(f.quantityKg))}` : ''}.`
+                  : `Sesuai HET (${rp(h.price_per_kg)}/kg).`}
               </p>
-
-              {lampiran.length < 3 && (
-                <label className="border border-dashed border-slate-300 hover:border-slate-800 rounded p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
-                  <Upload className="w-5 h-5 text-slate-600 mb-1" />
-                  <span className="text-xs font-bold text-slate-800">Unggah Berkas Bukti (JPG, PNG)</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
-              )}
-
-              {lampiran.length > 0 && (
-                <div className="grid grid-cols-3 gap-2 mt-3 font-mono text-xs">
-                  {lampiran.map((file, idx) => (
-                    <div key={idx} className="p-2 bg-slate-50 border border-slate-200 rounded flex justify-between items-center">
-                      <span className="truncate max-w-[120px] text-slate-800 font-bold">{file.nama}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(idx)}
-                        className="text-red-600 hover:text-red-800 ml-2"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+            )}
+            <div>
+              <label htmlFor="desc" className={labelCls}>Kronologi kejadian <span className="text-red-600">*</span></label>
+              <textarea id="desc" rows={5} value={f.description} onChange={set('description')} maxLength={2000} className={field}
+                placeholder="Ceritakan apa yang terjadi, kapan, siapa yang melayani, dan apa alasan yang diberikan kios." />
+              <p className="text-[11px] text-slate-500 text-right">{f.description.trim().length}/2000</p>
+              <Err k="description" />
             </div>
-          </div>
+            <div>
+              <span className={labelCls}>Foto bukti (nota, kemasan, papan harga), opsional</span>
+              <div className="flex flex-wrap gap-2">
+                {photos.map((p, i) => (
+                  <div key={p.url} className="relative w-24 h-24 rounded border border-slate-300 overflow-hidden">
+                    <img src={p.url} alt={`Bukti ${i + 1}`} className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => setPhotos((ps) => ps.filter((_, j) => j !== i))} aria-label={`Hapus foto ${i + 1}`}
+                      className="absolute top-1 right-1 p-1 rounded bg-white/90 text-red-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+                {photos.length < MAX_PHOTOS && (
+                  <label className="w-24 h-24 flex flex-col items-center justify-center gap-1 border-2 border-dashed border-slate-300 rounded cursor-pointer hover:border-slate-700 text-[11px] text-slate-600">
+                    <Upload className="w-5 h-5" />Tambah
+                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={addPhotos} className="sr-only" />
+                  </label>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Maks. {MAX_PHOTOS} foto. Data lokasi (EXIF) di dalam foto dihapus otomatis sebelum dikirim. Foto hanya bisa dilihat petugas.</p>
+              <Err k="photos" />
+            </div>
+          </>
         )}
 
-        {/* STEP 4: KONTAK OPSIONAL & INTEGRITAS */}
         {step === 4 && (
-          <div className="space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-gov p-4 space-y-2">
-              <span className="font-mono text-xs font-bold text-slate-800 uppercase block">
-                SALURAN NOTIFIKASI OPSIONAL
-              </span>
-              <p className="text-xs text-slate-600">
-                Boleh dikosongkan. Jika Anda mengisi nomor WhatsApp atau email, sistem akan mengirimkan pemberitahuan setiap ada tindak lanjut dari instansi pengawas.
-              </p>
-              <input
-                type="text"
-                placeholder="Nomor WhatsApp / Email Aktif (Opsional)"
-                value={kontakOpsional}
-                onChange={(e) => setKontakOpsional(e.target.value)}
-                className="w-full px-3 py-2 rounded border border-slate-300 font-mono text-xs focus:border-slate-800"
-              />
+          <>
+            <dl className="text-xs grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5 p-3 bg-slate-50 border border-slate-200 rounded">
+              <dt className="text-slate-500">Masalah</dt><dd className="font-medium">{REPORT_CATEGORIES.find((c) => c.id === f.category)?.title}</dd>
+              {needsFert && <><dt className="text-slate-500">Pupuk</dt><dd className="font-medium">{fertilizers.find((x) => x.id === f.fertilizerId)?.name}</dd></>}
+              <dt className="text-slate-500">Lokasi</dt><dd className="font-medium">{[f.desa, f.kecamatan, hasKabkotaData ? regions.find((r) => r.code === f.kabkota)?.name : f.kabkotaText, regions.find((r) => r.code === f.province)?.name].filter(Boolean).join(', ')}</dd>
+              <dt className="text-slate-500">Tanggal</dt><dd className="font-medium">{f.incidentDate}</dd>
+              {f.kioskName && <><dt className="text-slate-500">Kios</dt><dd className="font-medium">{f.kioskName}</dd></>}
+              {priceNum > 0 && <><dt className="text-slate-500">Harga/kg</dt><dd className="font-medium">{rp(priceNum)}{h && ` (HET ${rp(h.price_per_kg)})`}</dd></>}
+              <dt className="text-slate-500">Foto</dt><dd className="font-medium">{photos.length} berkas</dd>
+            </dl>
+            <div>
+              <label htmlFor="contact" className={labelCls}>Kontak (opsional): nomor WA atau email</label>
+              <input id="contact" value={contact} onChange={(e) => setContact(e.target.value)} maxLength={100} autoComplete="off" className={field} />
+              <p className="text-[11px] text-slate-500 mt-1 flex gap-1"><Lock className="w-3 h-3 mt-0.5 shrink-0" />Hanya dilihat petugas jika perlu klarifikasi. Tidak pernah ditampilkan publik. Kosongkan jika ingin anonim penuh.</p>
             </div>
-
-            {/* Anti-Spam Captcha Pertanyaan Matematika */}
-            <div className="bg-slate-50 border border-slate-200 rounded-gov p-4 space-y-2 font-mono">
-              <label htmlFor="inputCaptcha" className="block text-xs font-bold text-slate-900 uppercase">
-                PENGAMAN SISTEM (ANTI-BOT): BERAPA HASIL DARI {captchaNum1} + {captchaNum2}? <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="inputCaptcha"
-                type="number"
-                placeholder="Ketik angka hasil penjumlahan"
-                value={captchaAnswer}
-                onChange={(e) => setCaptchaAnswer(e.target.value)}
-                className="w-full px-3 py-2 rounded border border-slate-300 text-xs font-bold focus:border-slate-800"
-              />
-              {errors.captcha && (
-                <p className="text-xs text-red-600 font-sans">{errors.captcha}</p>
-              )}
-            </div>
-
-            {/* Pernyataan Integritas Data */}
-            <label className="flex items-start gap-2.5 cursor-pointer pt-2">
-              <input
-                type="checkbox"
-                checked={setujuPrivasi}
-                onChange={(e) => setSetujuPrivasi(e.target.checked)}
-                className="mt-1 rounded text-gov-forest focus:ring-gov-forest"
-              />
-              <span className="text-xs text-slate-700 leading-relaxed">
-                Saya menyatakan informasi ini adalah benar menurut fakta di lapangan, dan memahami bahwa saya akan diberikan <strong>Kode Rahasia Pelacakan</strong> untuk memverifikasi penyelesaian kasus ini.
-              </span>
+            <label className="flex gap-2 text-xs text-slate-700">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5" />
+              <span>Saya menyatakan laporan ini sesuai kejadian sebenarnya dan memahami bahwa laporan palsu dapat ditolak.</span>
             </label>
-            {errors.privasi && (
-              <p className="text-xs text-red-600 font-sans">{errors.privasi}</p>
-            )}
-          </div>
+            <Err k="agree" />
+            {submitError && <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded p-3 flex gap-2" role="alert"><ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />{submitError}</p>}
+          </>
         )}
 
-        {/* Action Button Strip */}
-        <div className="pt-4 border-t border-slate-200 flex items-center justify-between font-mono text-xs font-bold">
+        <div className="flex justify-between gap-3 pt-2 border-t border-slate-100">
           {step > 1 ? (
-            <button
-              type="button"
-              onClick={handlePrev}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>LANGKAH SEBELUMNYA</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                clearDraft();
-                setDeskripsi('');
-                setHargaDibayar('');
-                setNamaKios('');
-              }}
-              className="text-slate-500 hover:text-red-600 underline"
-            >
-              Hapus Draf Isian
-            </button>
-          )}
-
+            <button type="button" onClick={() => go(-1)} className="inline-flex items-center gap-1 px-4 py-2.5 rounded border border-slate-300 text-sm font-bold"><ChevronLeft className="w-4 h-4" />Kembali</button>
+          ) : <span />}
           {step < 4 ? (
-            <button
-              type="button"
-              onClick={handleNext}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded bg-slate-900 hover:bg-black text-white"
-            >
-              <span>LANJUT KE LANGKAH {step + 1}</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <button type="button" onClick={() => go(1)} className="inline-flex items-center gap-1 px-5 py-2.5 rounded bg-slate-900 text-white text-sm font-bold">Lanjut<ChevronRight className="w-4 h-4" /></button>
           ) : (
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded bg-gov-forest hover:bg-gov-hover text-white shadow-sm disabled:opacity-50"
-            >
-              <Send className="w-4 h-4" />
-              <span>{isSubmitting ? 'MENYIMPAN DOKET...' : 'TERBITKAN PENGADUAN'}</span>
+            <button type="submit" disabled={submitting} className="inline-flex items-center gap-2 px-5 py-2.5 rounded bg-gov-forest hover:bg-gov-hover text-white text-sm font-bold disabled:opacity-60">
+              <Send className="w-4 h-4" />{submitting ? 'Mengirim…' : 'Kirim laporan'}
             </button>
           )}
         </div>

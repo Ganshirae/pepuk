@@ -13,22 +13,22 @@ export default function Footer({ setActivePage }) {
                 TANI<span className="text-gov-forest">TERANG</span>
               </span>
               <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300">
-                PILOT NTB
+                NASIONAL + NTB
               </span>
             </div>
             <p className="text-slate-600 leading-relaxed max-w-md font-sans">
-              Portal keterbukaan data distribusi pupuk bersubsidi resmi untuk Provinsi Nusa Tenggara Barat. Didesain untuk memperkuat pengawasan publik, mencegah monopoli harga di atas HET, dan mengawal hak petani kecil secara independen.
+              Portal independen keterbukaan data distribusi pupuk bersubsidi: data resmi Kementerian Pertanian untuk 38 provinsi dan Satu Data NTB untuk 10 kabupaten/kota. Bukan situs resmi pemerintah.
             </p>
             <div className="pt-2 font-mono text-[11px] text-slate-500 space-y-1">
-              <div>• Landasan Hukum: Peraturan Menteri Pertanian No. 01 Tahun 2024</div>
-              <div>• Pengawasan Lapangan: Komisi Pengawasan Pupuk dan Pestisida (KP3) NTB</div>
+              <div>• Dasar: Perpres 6/2025, Permentan 15/2025 jo. 3/2026, Kepmentan 1117/2025 (HET)</div>
+              <div>• Tenggat tindak lanjut: PermenPANRB 62/2018</div>
             </div>
           </div>
 
           {/* Quick Links */}
           <div className="font-mono">
             <h4 className="font-bold text-slate-900 mb-3 text-xs uppercase tracking-wider">
-              NAVIGASI DOKET
+              NAVIGASI
             </h4>
             <ul className="space-y-2">
               <li>
@@ -36,15 +36,15 @@ export default function Footer({ setActivePage }) {
                   onClick={() => setActivePage('home')}
                   className="text-slate-600 hover:text-gov-forest transition-colors"
                 >
-                  Ringkasan & Wilayah
+                  Dashboard
                 </button>
               </li>
               <li>
                 <button
-                  onClick={() => setActivePage('data')}
+                  onClick={() => setActivePage('eligibility')}
                   className="text-slate-600 hover:text-gov-forest transition-colors"
                 >
-                  Peta Spasial & Data NTB
+                  Cek Hak Subsidi
                 </button>
               </li>
               <li>
@@ -52,7 +52,7 @@ export default function Footer({ setActivePage }) {
                   onClick={() => setActivePage('report')}
                   className="text-slate-600 hover:text-gov-forest transition-colors"
                 >
-                  Kirim Formulir Pengaduan
+                  Lapor Masalah
                 </button>
               </li>
               <li>
@@ -60,7 +60,7 @@ export default function Footer({ setActivePage }) {
                   onClick={() => setActivePage('track')}
                   className="text-slate-600 hover:text-gov-forest transition-colors"
                 >
-                  Lacak Disposisi Doket
+                  Lacak Laporan
                 </button>
               </li>
             </ul>
@@ -72,10 +72,10 @@ export default function Footer({ setActivePage }) {
               BATASAN PLATFORM
             </h4>
             <p className="text-[11px] text-slate-600 leading-relaxed mb-2 font-sans">
-              Platform ini tidak memproses penebusan fisik pupuk atau mengubah daftar e-RDKK. Platform beroperasi sebagai sistem transparansi data dan whistleblowing publik.
+              Platform ini tidak memproses penebusan pupuk, tidak mendaftarkan ke e-RDKK, dan tidak menggantikan kanal pengaduan resmi.
             </p>
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-700">
-              Data kosong bertuliskan <strong>"Belum Tersedia"</strong>, bukan nol.
+              Data kosong ditampilkan sebagai <strong>"–"</strong> atau abu-abu, bukan nol.
             </div>
           </div>
         </div>

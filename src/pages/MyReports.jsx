@@ -1,114 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { getMyReports, clearMyReports } from '../utils/storage';
-import { Bookmark, Search, Trash2, AlertCircle, FileText, ArrowRight } from 'lucide-react';
+import { REPORT_CATEGORIES } from '../data/ntbData';
+import { Search, Trash2, FileText } from 'lucide-react';
 
 export default function MyReports({ setActivePage, setLookupCode }) {
-  const [list, setList] = useState([]);
-
-  useEffect(() => {
-    setList(getMyReports());
-  }, []);
+  const [list, setList] = useState(getMyReports);
 
   const handleClear = () => {
-    if (window.confirm('Bersihkan seluruh riwayat doket pengaduan dari memori peramban ini?')) {
+    if (window.confirm('Hapus semua ID dan kode rahasia dari perangkat ini? Kode tidak bisa dipulihkan setelah dihapus.')) {
       clearMyReports();
       setList([]);
     }
   };
 
-  const handleTrackItem = (secretCode) => {
-    if (setLookupCode) {
-      setLookupCode(secretCode);
-    }
-    setActivePage('track');
-  };
-
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Title */}
-      <div className="bg-white border border-slate-200 p-6 rounded-gov space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-bold text-gov-forest bg-gov-light px-2 py-0.5 rounded border border-gov-border">
-              MEMORI PERAMBAN LOKAL
-            </span>
-            <span className="text-slate-400">•</span>
-            <span className="text-xs font-mono text-slate-500">PENYIMPANAN AMAN TANPA LOGIN</span>
-          </div>
+    <div className="max-w-3xl mx-auto space-y-5">
+      <header className="bg-white border border-slate-200 p-5 sm:p-6 rounded-gov space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Laporan Saya</h1>
           {list.length > 0 && (
-            <button
-              onClick={handleClear}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono font-bold text-red-700 hover:bg-red-50 border border-red-300"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>BERSIHKAN RIWAYAT</span>
+            <button onClick={handleClear} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold text-red-700 border border-red-300 hover:bg-red-50">
+              <Trash2 className="w-3.5 h-3.5" />Hapus dari perangkat
             </button>
           )}
         </div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-          Berkas Pengaduan Tersimpan di Perangkat Ini
-        </h1>
-        <p className="text-xs text-slate-600 leading-relaxed">
-          Daftar kode pelacakan dan doket pengaduan yang pernah Anda terbitkan melalui peramban ini. Data ini memungkinkan Anda membuka kembali status aduan dengan satu klik tanpa perlu mengingat kode rahasia.
-        </p>
-      </div>
+        <p className="text-sm text-slate-600">Disimpan hanya di peramban perangkat ini, bukan di server. Jika memakai HP bersama, hapus setelah dicatat.</p>
+      </header>
 
-      {/* Cache Notice */}
-      <div className="p-4 bg-amber-light border border-amber-border rounded font-mono text-xs text-amber-950 flex items-start gap-2.5">
-        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-        <div>
-          <strong>CATATAN PENYIMPANAN LOKAL:</strong> Riwayat ini tersimpan dalam basis data <code>localStorage</code> perangkat. Jika Anda menghapus cache browser, daftar cepat ini akan terhapus. Pastikan Anda tetap mencatat kode rahasia di tempat terpisah.
-        </div>
-      </div>
-
-      {/* List Table / Cards */}
       {list.length === 0 ? (
-        <div className="p-8 bg-white border border-slate-200 rounded text-center space-y-3 font-mono text-xs text-slate-500">
-          <FileText className="w-8 h-8 text-slate-300 mx-auto" />
-          <p className="text-slate-700 font-bold">Belum Ada Riwayat Pengaduan yang Diterbitkan dari Perangkat Ini</p>
-          <p className="max-w-md mx-auto text-slate-500">
-            Setiap kali Anda menerbitkan pengaduan melalui form TANITERANG, nomor doket dan token rahasia akan otomatis tersimpan di sini.
-          </p>
-          <button
-            onClick={() => setActivePage('report')}
-            className="px-4 py-2 rounded bg-gov-forest text-white font-bold inline-block"
-          >
-            TERBITKAN PENGADUAN BARU
-          </button>
+        <div className="bg-white border border-slate-200 rounded-gov p-10 text-center space-y-3">
+          <FileText className="w-10 h-10 text-slate-300 mx-auto" />
+          <p className="text-sm text-slate-600">Belum ada laporan dari perangkat ini.</p>
+          <button onClick={() => setActivePage('report')} className="px-4 py-2 rounded bg-gov-forest text-white text-sm font-bold">Buat laporan</button>
         </div>
       ) : (
-        <div className="space-y-3 font-mono">
+        <ul className="space-y-2">
           {list.map((item) => (
-            <div
-              key={item.idPublik}
-              className="p-4 bg-white border border-slate-200 hover:border-slate-800 rounded transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-slate-900">{item.idPublik}</span>
-                  <span className="text-[11px] px-2 py-0.5 bg-slate-100 border border-slate-300 rounded font-bold text-slate-700">
-                    TOKEN: {item.secretCode}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 font-sans">
-                  <span className="font-bold text-slate-800">{item.jenisPupuk}</span>
-                  <span>•</span>
-                  <span>{item.namaWilayah}</span>
-                  <span>•</span>
-                  <span className="font-mono text-[11px]">{item.dibuatPada}</span>
-                </div>
+            <li key={item.publicId} className="bg-white border border-slate-200 rounded-gov p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <p className="font-mono font-black text-slate-900">{item.publicId}</p>
+                <p className="text-xs text-slate-600">{REPORT_CATEGORIES.find((c) => c.id === item.category)?.title} • {item.regionName}</p>
+                <p className="text-[11px] text-slate-500">Kode: <span className="font-mono font-bold">{item.secretCode}</span> • {new Date(item.createdAt).toLocaleDateString('id-ID', { dateStyle: 'medium' })}</p>
               </div>
-
               <button
-                onClick={() => handleTrackItem(item.secretCode)}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded bg-slate-900 hover:bg-black text-white text-xs font-mono font-bold transition-colors"
+                onClick={() => { setLookupCode({ publicId: item.publicId, secretCode: item.secretCode }); setActivePage('track'); }}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded bg-gov-forest hover:bg-gov-hover text-white text-xs font-bold"
               >
-                <Search className="w-3.5 h-3.5" />
-                <span>PERIKSA DOKET</span>
+                <Search className="w-3.5 h-3.5" />Lacak
               </button>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

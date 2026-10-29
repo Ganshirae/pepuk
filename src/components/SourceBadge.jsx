@@ -1,27 +1,28 @@
 import React from 'react';
-import { Database, FileText, Newspaper, ShieldCheck } from 'lucide-react';
+import { Database, FileText, Newspaper } from 'lucide-react';
 
-export default function SourceBadge({ sumber, tipe = 'Dataset Resmi', tanggal = '2024-10-15', className = '' }) {
-  const getIcon = () => {
-    switch (tipe.toLowerCase()) {
-      case 'dataset resmi':
-        return <Database className="w-3 h-3 text-gov-forest" />;
-      case 'regulasi':
-      case 'regulasi resmi':
-        return <FileText className="w-3 h-3 text-blue-700" />;
-      default:
-        return <Newspaper className="w-3 h-3 text-amber-700" />;
-    }
-  };
+const TYPE_LABEL = { dataset_resmi: 'Dataset Resmi', regulasi: 'Regulasi', berita: 'Berita' };
+
+// Menampilkan asal sebuah angka: jenis sumber, penerbit (tautan), dan tanggal rilis/akses.
+export default function SourceBadge({ source, className = '' }) {
+  if (!source) return null;
+  const Icon = source.source_type === 'dataset_resmi' ? Database : source.source_type === 'regulasi' ? FileText : Newspaper;
+  const tanggal = source.released_on ? `rilis ${source.released_on}` : `diakses ${source.accessed_on}`;
 
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 border border-slate-300 text-[11px] font-mono text-slate-700 ${className}`}>
-      {getIcon()}
-      <span className="font-bold uppercase tracking-wider text-slate-900">{tipe}</span>
+    <a
+      href={source.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`${source.title}${source.notes ? `\n\nCatatan: ${source.notes}` : ''}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 border border-slate-300 hover:border-slate-700 text-[11px] font-mono text-slate-700 max-w-full ${className}`}
+    >
+      <Icon className="w-3 h-3 text-gov-forest shrink-0" />
+      <span className="font-bold uppercase tracking-wider text-slate-900 shrink-0">{TYPE_LABEL[source.source_type]}</span>
       <span className="text-slate-400">|</span>
-      <span className="truncate max-w-[220px] font-sans font-medium" title={sumber}>{sumber}</span>
+      <span className="truncate font-sans font-medium">{source.publisher}</span>
       <span className="text-slate-400">|</span>
       <span className="text-slate-500 whitespace-nowrap">{tanggal}</span>
-    </div>
+    </a>
   );
 }
